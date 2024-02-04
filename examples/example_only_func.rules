@@ -1,21 +1,21 @@
 service cloud.firestore {
   match /path {
-    allow;
+    allow read;
 
     match /path/one {
-      allow;
+      allow write: if var;
     }
 
     match /{path}/one {
-      allow;
+      allow create;
     }
 
     match /{path}/{wild=**} {
-      allow;
+      allow read;
     }
   }
 
   match /path {
-    allow;
+    allow get;
   }
 }

@@ -1,6 +1,6 @@
 use chumsky::{prelude::*, text::*};
 
-use super::models::Expr;
+use super::models::{AllowMethod, Expr};
 
 type SimpleCharError = Simple<char>;
 
@@ -70,12 +70,41 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     let newline_separator = newline().labelled("whitespace_delimiter").boxed();
 
     let semicolon = just(";").labelled("semicolon").boxed();
+    let colon = just(":").labelled("colon").boxed();
 
-    let rule = whitespace()
-        .ignore_then(keyword("allow"))
+    let method = choice([
+        keyword("read").to(AllowMethod::Read),
+        keyword("write").to(AllowMethod::Write),
+        keyword("get").to(AllowMethod::Get),
+        keyword("list").to(AllowMethod::List),
+        keyword("create").to(AllowMethod::Create),
+        keyword("update").to(AllowMethod::Update),
+        keyword("delete").to(AllowMethod::Delete),
+    ])
+    .labelled("method")
+    .boxed();
+
+    // Test if _ is allowed in variable names
+    let variable = ident().labelled("variable").boxed();
+
+    // TODO content
+    let allow_content = (keyword("if")
+        .padded()
+        .map_err(|e: SimpleCharError| Simple::custom(e.span(), "if expected")))
+    .ignore_then(variable)
+    .map(Expr::Variable)
+    .labelled("allow_content")
+    .boxed();
+
+    let allow = (keyword("allow").padded())
+        .ignore_then(method)
+        .then(choice([
+            semicolon.clone().rewind().to(Expr::AllAllow).boxed(),
+            colon.ignore_then(allow_content).boxed(),
+        ]))
         .then_ignore(semicolon)
-        .map(|()| Expr::Rule("allow".to_string()))
-        .labelled("rule_match")
+        .map(|(meth, con)| Expr::Allow(meth, Box::new(con)))
+        .labelled("allow_rule")
         .boxed();
 
     let match_declaration = whitespace()
@@ -89,9 +118,26 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         match_declaration
             .then_ignore(whitespace().then(block_start.clone()))
             .then(
-                choice([rule, expr.boxed()])
+                choice([allow, expr.boxed()])
                     .separated_by(newline_separator)
-                    .at_least(1),
+                    .at_least(1)
+                    .boxed()
+                    // There has to be a smarter way than validating
+                    // but I cant seem to be smart enough to find it
+                    .validate(|exprsns, span, emit| {
+                        let has_allow = exprsns.iter().any(|s| match s {
+                            Expr::Allow(_, _) => true,
+                            _ => false,
+                        });
+
+                        if !has_allow {
+                            emit(Simple::custom(
+                                span,
+                                "An allow block must have at least 1 allow rule",
+                            ))
+                        };
+                        exprsns
+                    }),
             )
             .then_ignore(block_end.clone())
             .map(|(path, exprsns)| Expr::Match(Box::new(path), exprsns))
