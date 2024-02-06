@@ -2,6 +2,10 @@ service cloud.firestore {
   match /path {
     allow read;
 
+    function fun(arg1) {
+      var;
+    }
+
     match /path/one {
       allow write: if var;
     }

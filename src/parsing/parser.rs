@@ -9,6 +9,15 @@ fn is_path_spec_char(a: &char) -> bool {
 }
 
 pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
+    let semicolon = just(";").labelled("semicolon").boxed();
+    let colon = just(":").labelled("colon").boxed();
+
+    macro_rules! statement {
+        ($p: expr) => {
+            $p.then_ignore(semicolon.clone())
+        };
+    }
+
     let dotted_ident = ident()
         .separated_by(just("."))
         .collect::<Vec<String>>()
@@ -19,6 +28,7 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     let block_start = just("{").then(newline()).labelled("block_start").boxed();
 
     let block_end = newline()
+        .or_not()
         .then(whitespace())
         .then(just("}"))
         .labelled("block_end")
@@ -69,9 +79,6 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
 
     let newline_separator = newline().labelled("whitespace_delimiter").boxed();
 
-    let semicolon = just(";").labelled("semicolon").boxed();
-    let colon = just(":").labelled("colon").boxed();
-
     let method = choice([
         keyword("read").to(AllowMethod::Read),
         keyword("write").to(AllowMethod::Write),
@@ -85,24 +92,49 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     .boxed();
 
     // Test if _ is allowed in variable names
-    let variable = ident().labelled("variable").boxed();
+    let variable = ident().labelled("variable").map(Expr::Variable).boxed();
+
+    // TODO Function body
+    let function_body = statement!(variable.clone())
+        .separated_by(newline_separator.clone())
+        .map(Expr::FunctionBody)
+        .labelled("function_body")
+        .boxed();
+
+    let function_declaration = (keyword("function").padded())
+        .ignore_then(ident())
+        .then(
+            variable
+                .clone()
+                .separated_by(just(",").padded())
+                .delimited_by(just("("), just(")"))
+                .padded(),
+        )
+        .then(
+            function_body
+                .padded()
+                .delimited_by(block_start.clone(), block_end.clone()),
+        )
+        .map(|((fname, fargs), fbody)| Expr::FunctionDecl(fname, fargs, Box::new(fbody)))
+        .labelled("function_declaration")
+        .boxed();
 
     // TODO content
     let allow_content = (keyword("if")
         .padded()
         .map_err(|e: SimpleCharError| Simple::custom(e.span(), "if expected")))
     .ignore_then(variable)
-    .map(Expr::Variable)
+    .map(|c| Expr::ConditionalAllow(Box::new(c)))
     .labelled("allow_content")
     .boxed();
 
     let allow = (keyword("allow").padded())
-        .ignore_then(method)
-        .then(choice([
-            semicolon.clone().rewind().to(Expr::AllAllow).boxed(),
-            colon.ignore_then(allow_content).boxed(),
+        .ignore_then(choice([
+            statement!(method.clone())
+                .map(|m| (m, Expr::AllAllow))
+                .boxed(),
+            statement!(method.then_ignore(colon).then(allow_content)).boxed(),
         ]))
-        .then_ignore(semicolon)
         .map(|(meth, con)| Expr::Allow(meth, Box::new(con)))
         .labelled("allow_rule")
         .boxed();
@@ -118,7 +150,7 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         match_declaration
             .then_ignore(whitespace().then(block_start.clone()))
             .then(
-                choice([allow, expr.boxed()])
+                choice([allow, function_declaration, expr.boxed()])
                     .separated_by(newline_separator)
                     .at_least(1)
                     .boxed()

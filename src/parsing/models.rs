@@ -10,6 +10,8 @@ pub enum Expr {
     RecursiveWildPath(String),
     Allow(AllowMethod, Box<Expr>),
     ConditionalAllow(Box<Expr>),
+    FunctionDecl(String, Vec<Expr>, Box<Expr>),
+    FunctionBody(Vec<Expr>),
     AllAllow,
 
     //Placeholder during development
