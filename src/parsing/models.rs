@@ -11,7 +11,8 @@ pub enum Expr {
     Allow(AllowMethod, Box<Expr>),
     ConditionalAllow(Box<Expr>),
     FunctionDecl(String, Vec<Expr>, Box<Expr>),
-    FunctionBody(Vec<Expr>),
+    FunctionBody(Vec<Expr>, Box<Expr>),
+    Return(Box<Expr>),
     AllAllow,
 
     //Placeholder during development

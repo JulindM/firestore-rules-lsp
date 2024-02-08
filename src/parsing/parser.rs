@@ -1,8 +1,9 @@
 use chumsky::{prelude::*, text::*};
 
-use super::models::{AllowMethod, Expr};
-
-type SimpleCharError = Simple<char>;
+use super::{
+    errors::{gen_error, SimpleCharError},
+    models::{AllowMethod, Expr},
+};
 
 fn is_path_spec_char(a: &char) -> bool {
     a.is_ascii_alphabetic()
@@ -91,13 +92,47 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     .labelled("method")
     .boxed();
 
+    let equals = just("=").labelled("equals").boxed();
+
     // Test if _ is allowed in variable names
     let variable = ident().labelled("variable").map(Expr::Variable).boxed();
 
-    // TODO Function body
-    let function_body = statement!(variable.clone())
-        .separated_by(newline_separator.clone())
-        .map(Expr::FunctionBody)
+    //TODO let body
+    let let_statement = {
+        let let_content = keyword("let")
+            .padded()
+            .ignore_then(variable.clone())
+            .map_err(gen_error("variable name expected"))
+            .then_ignore(equals.padded())
+            .map_err(gen_error("equals expected"))
+            .boxed();
+
+        statement!(let_content)
+    };
+
+    let return_statement = {
+        //TODO return body
+        let return_content = keyword("return")
+            .padded()
+            .map_err(gen_error("return expected"))
+            .ignore_then(variable.clone())
+            .labelled("return")
+            .boxed();
+
+        statement!(return_content)
+    };
+
+    let function_body = let_statement
+        .separated_by(newline_separator.clone().repeated().at_least(1))
+        .or_not()
+        .then(return_statement.then_ignore(newline_separator.clone()))
+        .map_err(gen_error("let or return expected"))
+        .map(|(stmts, ret)| {
+            Expr::FunctionBody(
+                stmts.unwrap_or(vec![]),
+                Box::new(Expr::Return(Box::new(ret))),
+            )
+        })
         .labelled("function_body")
         .boxed();
 
@@ -120,13 +155,11 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .boxed();
 
     // TODO content
-    let allow_content = (keyword("if")
-        .padded()
-        .map_err(|e: SimpleCharError| Simple::custom(e.span(), "if expected")))
-    .ignore_then(variable)
-    .map(|c| Expr::ConditionalAllow(Box::new(c)))
-    .labelled("allow_content")
-    .boxed();
+    let allow_content = (keyword("if").padded().map_err(gen_error("if expected")))
+        .ignore_then(variable)
+        .map(|c| Expr::ConditionalAllow(Box::new(c)))
+        .labelled("allow_content")
+        .boxed();
 
     let allow = (keyword("allow").padded())
         .ignore_then(choice([
@@ -163,9 +196,8 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
                         });
 
                         if !has_allow {
-                            emit(Simple::custom(
+                            emit(gen_error("An allow block must have at least 1 allow rule")(
                                 span,
-                                "An allow block must have at least 1 allow rule",
                             ))
                         };
                         exprsns

@@ -3,7 +3,9 @@ service cloud.firestore {
     allow read;
 
     function fun(arg1) {
-      var;
+      let var1 = ;
+      let var2 = ;
+      return var;
     }
 
     match /path/one {
