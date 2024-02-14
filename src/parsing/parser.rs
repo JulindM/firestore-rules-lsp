@@ -1,4 +1,8 @@
+use std::vec;
+
 use chumsky::{prelude::*, text::*};
+
+use crate::parsing::models::{ArithmeticOp, LogicOp};
 
 use super::{
     errors::{gen_error, SimpleCharError},
@@ -92,10 +96,109 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     .labelled("method")
     .boxed();
 
+    let arithmetic_op = choice([
+        just("+").to(ArithmeticOp::Add),
+        just("-").to(ArithmeticOp::Sub),
+        just("*").to(ArithmeticOp::Mult),
+        just("/").to(ArithmeticOp::Div),
+    ])
+    .labelled("arithmetic_op")
+    .boxed();
+
+    // TODO fix this mess of justs
+    let logic_op = choice([
+        just("&").then(just("&")).to(LogicOp::And),
+        just("|").then(just("|")).to(LogicOp::Or),
+        just("=").then(just("=")).to(LogicOp::Eq),
+        just("!").then(just("=")).to(LogicOp::Ineq),
+    ])
+    .labelled("logic_op")
+    .boxed();
+
     let equals = just("=").labelled("equals").boxed();
 
     // Test if _ is allowed in variable names
     let variable = ident().labelled("variable").map(Expr::Variable).boxed();
+
+    let number = just("-")
+        .to(-1)
+        .or_not()
+        .to(1)
+        .then(int(10).try_map(|s: String, span| {
+            s.parse::<i32>()
+                .map_err(|_| gen_error("not a valid integer")(span))
+        }))
+        .map(|(negation, digits)| Expr::Number(negation * digits))
+        .labelled("number")
+        .boxed();
+
+    let function_signature = ident()
+        .then(
+            variable
+                .clone()
+                .separated_by(just(",").padded())
+                .delimited_by(just("("), just(")"))
+                .padded()
+                .or_not()
+                .map(|vars| vars.unwrap_or(vec![])),
+        )
+        .map_err(gen_error(
+            "function signature expected (call or definition)",
+        ))
+        .map(|(fname, fargs)| Expr::FunctionSig(fname, fargs))
+        .labelled("function_signature")
+        .boxed();
+
+    let arithmetic_expr = recursive(|expr| {
+        let operand = choice([
+            function_signature.clone(),
+            variable.clone(),
+            number,
+            expr.delimited_by(just("("), just(")")).boxed(),
+        ]);
+
+        operand
+            .clone()
+            .map_err(gen_error("arithmetic operand expected"))
+            .then(arithmetic_op.padded())
+            .map_err(gen_error("arithmetic operator expected"))
+            .then(operand)
+            .map_err(gen_error("arithmetic operand expected"))
+            .map(|((o1, op), o2)| Expr::ArithmeticExpr(Box::new(o1), Box::new(o2), op))
+    })
+    .labelled("arithmetic_expr")
+    .boxed();
+
+    let logic_expr = recursive(|expr| {
+        let operand = choice([
+            function_signature.clone(),
+            variable.clone(),
+            keyword("true").to(Expr::Bool(true)).boxed(),
+            keyword("false").to(Expr::Bool(false)).boxed(),
+            expr.delimited_by(just("("), just(")")).boxed(),
+        ]);
+
+        operand
+            .clone()
+            .map_err(gen_error("truthy operand expected"))
+            .then(logic_op.padded())
+            .map_err(gen_error("truthy operator expected"))
+            .then(operand)
+            .map_err(gen_error("truthy operand expected"))
+            .map(|((o1, op), o2)| Expr::LogicExpression(Box::new(o1), Box::new(o2), op))
+    })
+    .labelled("arithmetic_expr")
+    .boxed();
+
+    let expression = choice([
+        logic_expr,
+        arithmetic_expr,
+        variable.clone(),
+        function_signature.clone(),
+    ])
+    .map_err(gen_error("expression expected"))
+    .labelled("expression")
+    .boxed();
 
     //TODO let body
     let let_statement = {
@@ -105,9 +208,14 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
             .map_err(gen_error("variable name expected"))
             .then_ignore(equals.padded())
             .map_err(gen_error("equals expected"))
+            .then(expression.clone())
+            .map_err(gen_error("arithmetic or logic expression expected"))
+            .map(|(var_name, expr)| {
+                Expr::VariableDef(Box::new(var_name.clone()), Box::new(expr.clone()))
+            })
             .boxed();
 
-        statement!(let_content)
+        statement!(let_content).labelled("let_statement").boxed()
     };
 
     let return_statement = {
@@ -115,11 +223,13 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         let return_content = keyword("return")
             .padded()
             .map_err(gen_error("return expected"))
-            .ignore_then(variable.clone())
+            .ignore_then(expression)
             .labelled("return")
             .boxed();
 
         statement!(return_content)
+            .labelled("return_statement")
+            .boxed()
     };
 
     let function_body = let_statement
@@ -137,20 +247,13 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .boxed();
 
     let function_declaration = (keyword("function").padded())
-        .ignore_then(ident())
-        .then(
-            variable
-                .clone()
-                .separated_by(just(",").padded())
-                .delimited_by(just("("), just(")"))
-                .padded(),
-        )
+        .ignore_then(function_signature)
         .then(
             function_body
                 .padded()
                 .delimited_by(block_start.clone(), block_end.clone()),
         )
-        .map(|((fname, fargs), fbody)| Expr::FunctionDecl(fname, fargs, Box::new(fbody)))
+        .map(|(fsig, fbody)| Expr::FunctionDecl(Box::new(fsig), Box::new(fbody)))
         .labelled("function_declaration")
         .boxed();
 
@@ -213,7 +316,8 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .repeated()
         .collect()
         .labelled("service_body")
-        .map(Expr::ServiceBody);
+        .map(Expr::ServiceBody)
+        .boxed();
 
     let service_decl = keyword("service")
         .ignore_then(dotted_ident.padded())

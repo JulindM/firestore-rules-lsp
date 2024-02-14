@@ -3,8 +3,12 @@ service cloud.firestore {
     allow read;
 
     function fun(arg1) {
-      let var1 = ;
-      let var2 = ;
+      return 1 + 3;
+    }
+
+    function fun(arg1) {
+      let var1 = 3 + (4 + get(c));
+      let var2 = true && (get(f) || false);
       return var;
     }
 
