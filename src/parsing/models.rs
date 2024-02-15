@@ -4,12 +4,13 @@ pub enum Expr {
     ServiceBody(Vec<Expr>),
     Match(Box<Expr>, Vec<Expr>),
     Path(Vec<Expr>),
-    VarPath(String),
+    PathPart(String),
+    EvalPathPart(String),
     Variable(String),
     VariableDef(Box<Expr>, Box<Expr>),
     SingleSegWildPath(String),
     RecursiveWildPath(String),
-    Allow(AllowMethod, Box<Expr>),
+    Allow(Vec<AllowMethod>, Box<Expr>),
     ConditionalAllow(Box<Expr>),
     FunctionSig(String, Vec<Expr>),
     FunctionDecl(Box<Expr>, Box<Expr>),
@@ -22,6 +23,7 @@ pub enum Expr {
     Nested(Box<Expr>, Box<Expr>, NestedOperator),
     Number(i32),
     Bool(bool),
+    Comment,
 }
 
 #[derive(Debug, Clone, PartialEq)]

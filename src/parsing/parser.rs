@@ -35,7 +35,15 @@ fn generate_nested_expr(expr: Expr, nested_ops: Vec<(NestedOperator, Expr)>) -> 
 
 pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     let semicolon = just(";").labelled("semicolon").boxed();
+
     let colon = just(":").labelled("colon").boxed();
+
+    let comment = whitespace()
+        .then(just("/"))
+        .then(just("/"))
+        .then(take_until(newline().rewind()))
+        .map(|_| Expr::Comment)
+        .boxed();
 
     macro_rules! statement {
         ($p: expr) => {
@@ -68,10 +76,18 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .labelled("path_spec")
         .boxed();
 
-    let var_path = pathspec
+    let path_part = pathspec
         .clone()
-        .map(Expr::VarPath)
+        .map(Expr::PathPart)
         .labelled("path_part")
+        .boxed();
+
+    // better handling of dotted ident to nested valuable?
+    let eval_path_part = dotted_ident
+        .clone()
+        .delimited_by(just("$("), just(")"))
+        .map(Expr::EvalPathPart)
+        .labelled("eval_path")
         .boxed();
 
     let single_seg_wild_path = pathspec
@@ -93,28 +109,23 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
 
     let path_separator = just("/").labelled("path_separator").boxed();
 
-    let path = path_separator
-        .clone()
-        .ignore_then(
-            choice([var_path, single_seg_wild_path, rec_wild_path])
-                .separated_by(path_separator)
-                .collect(),
-        )
-        .map(Expr::Path);
+    let rule_path = choice([path_part.clone(), single_seg_wild_path, rec_wild_path])
+        .separated_by(path_separator.clone())
+        .allow_leading()
+        .collect()
+        .map(Expr::Path)
+        .labelled("rule_path")
+        .boxed();
+
+    let accessible_path = choice([path_part, eval_path_part])
+        .separated_by(path_separator)
+        .allow_leading()
+        .collect()
+        .map(Expr::Path)
+        .labelled("accessible_path")
+        .boxed();
 
     let newline_separator = newline().labelled("whitespace_delimiter").boxed();
-
-    let method = choice([
-        keyword("read").to(AllowMethod::Read),
-        keyword("write").to(AllowMethod::Write),
-        keyword("get").to(AllowMethod::Get),
-        keyword("list").to(AllowMethod::List),
-        keyword("create").to(AllowMethod::Create),
-        keyword("update").to(AllowMethod::Update),
-        keyword("delete").to(AllowMethod::Delete),
-    ])
-    .labelled("method")
-    .boxed();
 
     let arithmetic_op = choice([
         just("+").to(ArithmeticOp::Add),
@@ -167,24 +178,6 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .labelled("number")
         .boxed();
 
-    let function_signature = ident()
-        .then(
-            variable
-                .clone()
-                .separated_by(just(",").padded())
-                .delimited_by(just("("), just(")"))
-                .padded()
-                .or_not()
-                .map(|vars| vars.unwrap_or(vec![]))
-                .or_not(),
-        )
-        .map_err(gen_error(
-            "function signature expected (call or definition)",
-        ))
-        .map(|(fname, fargs)| Expr::FunctionSig(fname, fargs.unwrap_or(vec![])))
-        .labelled("function_signature")
-        .boxed();
-
     let indexing = just("[")
         .ignore_then(int(10).try_map(|s: String, span| {
             s.parse::<u32>()
@@ -201,81 +194,72 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .labelled("indexing")
         .boxed();
 
-    let atomic_valuable = choice([function_signature.clone(), variable.clone()])
-        .labelled("atomic_valuable")
-        .boxed();
+    let expression = recursive(|expr| {
+        let function_call = ident()
+            .then(
+                choice([expr.boxed(), accessible_path])
+                    .separated_by(just(","))
+                    .delimited_by(just("("), just(")"))
+                    .or_not()
+                    .map(|function_params| function_params.unwrap_or(vec![])),
+            )
+            .map_err(gen_error("function call expected"))
+            .map(|(fname, fargs)| Expr::FunctionSig(fname, fargs))
+            .labelled("function_call")
+            .boxed();
 
-    let valuable = atomic_valuable
-        .then(choice([indexing, field_access]).repeated().or_not())
-        .map(|(atomic, nested_ops)| {
-            if nested_ops.is_none() {
-                return atomic;
-            }
+        let valueable = choice([function_call, variable.clone()])
+            .then(choice([indexing, field_access]).repeated().or_not())
+            .map(|(atomic, nested_ops)| {
+                if nested_ops.is_none() {
+                    return atomic;
+                }
 
-            generate_nested_expr(atomic, nested_ops.unwrap())
-        })
-        .labelled("valuable")
-        .boxed();
+                generate_nested_expr(atomic, nested_ops.unwrap())
+            })
+            .labelled("valueable")
+            .boxed();
 
-    let arithmetic_expr = recursive(|expr| {
-        let operand = choice([
-            number.clone(),
-            valuable.clone(),
-            expr.delimited_by(just("("), just(")")).boxed(),
-        ]);
-
-        operand
+        let arithmetic_operand = choice([number.clone(), valueable.clone()])
+            .labelled("arithmetic_operand")
+            .boxed();
+        let arithmetic_calculation = arithmetic_operand
             .clone()
-            .map_err(gen_error("arithmetic operand expected"))
             .then(arithmetic_op.padded())
-            .map_err(gen_error("arithmetic operator expected"))
-            .then(operand)
-            .map_err(gen_error("arithmetic operand expected"))
+            .then(arithmetic_operand.clone())
             .map(|((o1, op), o2)| Expr::ArithmeticExpr(Box::new(o1), Box::new(o2), op))
-    })
-    .labelled("arithmetic_expr")
-    .boxed();
+            .labelled("arithmetic_calculation")
+            .boxed();
+        let arithmetic_expr = choice([arithmetic_calculation, arithmetic_operand])
+            .labelled("arithmetic_expr")
+            .boxed();
 
-    let logic_expr = recursive(|expr| {
-        let truthy_operand = choice([
-            valuable.clone(),
+        let logical_operand = choice([
             keyword("true").to(Expr::Bool(true)).boxed(),
             keyword("false").to(Expr::Bool(false)).boxed(),
-            expr.delimited_by(just("("), just(")")).boxed(),
+            valueable.clone(),
+            number,
         ])
         .boxed();
-
-        let binary_truthy_operand = choice([truthy_operand.clone(), number]).boxed();
-        let binary_expression = binary_truthy_operand
+        let binary_logic_expr = logical_operand
             .clone()
-            .map_err(gen_error("truthy operand expected"))
             .then(binary_logic_op.padded())
-            .map_err(gen_error("truthy operator expected"))
-            .then(binary_truthy_operand.clone())
-            .map_err(gen_error("truthy operand expected"))
+            .then(logical_operand.clone())
             .map(|((o1, op), o2)| Expr::LogicExpression(Box::new(o1), Box::new(o2), op))
             .boxed();
-
-        let unary_expression = unary_logic_op
-            .map_err(gen_error("unary logic operator expected"))
-            .then(truthy_operand.clone())
-            .map_err(gen_error("truthy operand expected"))
+        let unary_logic_expression = unary_logic_op
+            .then(valueable.clone())
             .map(|(op, o1)| Expr::UnaryLogicExpression(Box::new(o1), op))
             .boxed();
-
-        choice([binary_expression, unary_expression, truthy_operand])
+        let logic_expr = choice([binary_logic_expr, unary_logic_expression, logical_operand])
             .labelled("logic expression")
-            .boxed()
+            .boxed();
+
+        choice([logic_expr, arithmetic_expr, valueable])
     })
-    .labelled("arithmetic_expr")
+    .labelled("expression")
     .boxed();
 
-    let expression = choice([logic_expr.clone(), arithmetic_expr, valuable])
-        .map_err(gen_error("expression expected"))
-        .labelled("expression")
-        .boxed();
-
-    //TODO let body
     let let_statement = {
         let let_content = keyword("let")
             .padded()
@@ -294,11 +278,10 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     };
 
     let return_statement = {
-        //TODO return body
         let return_content = keyword("return")
             .padded()
             .map_err(gen_error("return expected"))
-            .ignore_then(expression)
+            .ignore_then(expression.clone())
             .labelled("return")
             .boxed();
 
@@ -307,8 +290,8 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
             .boxed()
     };
 
-    let function_body = let_statement
-        .separated_by(newline_separator.clone().repeated().at_least(1))
+    let function_body = choice([let_statement.boxed(), comment.clone().boxed()])
+        .separated_by(newline_separator.clone())
         .or_not()
         .then(return_statement.then_ignore(newline_separator.clone()))
         .map_err(gen_error("let or return expected"))
@@ -319,6 +302,24 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
             )
         })
         .labelled("function_body")
+        .boxed();
+
+    let function_signature = ident()
+        .then(
+            variable
+                .clone()
+                .separated_by(just(",").padded())
+                .delimited_by(just("("), just(")"))
+                .padded()
+                .or_not()
+                .map(|vars| vars.unwrap_or(vec![]))
+                .or_not(),
+        )
+        .map_err(gen_error(
+            "function signature expected (call or definition)",
+        ))
+        .map(|(fname, fargs)| Expr::FunctionSig(fname, fargs.unwrap_or(vec![])))
+        .labelled("function_signature")
         .boxed();
 
     let function_declaration = (keyword("function").padded())
@@ -334,17 +335,30 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
 
     // TODO content
     let allow_content = (keyword("if").padded().map_err(gen_error("if expected")))
-        .ignore_then(logic_expr)
+        .ignore_then(expression)
         .map(|c| Expr::ConditionalAllow(Box::new(c)))
         .labelled("allow_content")
         .boxed();
 
+    let methods = choice([
+        keyword("read").to(AllowMethod::Read),
+        keyword("write").to(AllowMethod::Write),
+        keyword("get").to(AllowMethod::Get),
+        keyword("list").to(AllowMethod::List),
+        keyword("create").to(AllowMethod::Create),
+        keyword("update").to(AllowMethod::Update),
+        keyword("delete").to(AllowMethod::Delete),
+    ])
+    .separated_by(just(",").padded())
+    .labelled("method")
+    .boxed();
+
     let allow = (keyword("allow").padded())
         .ignore_then(choice([
-            statement!(method.clone())
+            statement!(methods.clone())
                 .map(|m| (m, Expr::AllAllow))
                 .boxed(),
-            statement!(method.then_ignore(colon).then(allow_content)).boxed(),
+            statement!(methods.then_ignore(colon).then(allow_content)).boxed(),
         ]))
         .map(|(meth, con)| Expr::Allow(meth, Box::new(con)))
         .labelled("allow_rule")
@@ -353,7 +367,7 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     let match_declaration = whitespace()
         .then(keyword("match"))
         .then(whitespace())
-        .ignore_then(path)
+        .ignore_then(rule_path)
         .labelled("match_declaration")
         .boxed();
 
@@ -361,22 +375,25 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         match_declaration
             .then_ignore(whitespace().then(block_start.clone()))
             .then(
-                choice([allow, function_declaration, expr.boxed()])
-                    .separated_by(newline_separator)
+                choice([comment.clone(), allow, function_declaration, expr.boxed()])
+                    .separated_by(newline_separator.clone())
                     .at_least(1)
                     .boxed()
                     // There has to be a smarter way than validating
                     // but I cant seem to be smart enough to find it
                     .validate(|exprsns, span, emit| {
                         let has_allow = exprsns.iter().any(|s| match s {
+                            Expr::Match(_, _) => true,
                             Expr::Allow(_, _) => true,
+                            Expr::AllAllow => true,
                             _ => false,
                         });
 
                         if !has_allow {
-                            emit(gen_error("An allow block must have at least 1 allow rule")(
-                                span,
-                            ))
+                            emit(gen_error(
+                                "An allow block must have at least 1 
+                                allow rule or match block",
+                            )(span))
                         };
                         exprsns
                     }),
@@ -387,8 +404,8 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     .labelled("match_block")
     .boxed();
 
-    let service_body = match_block
-        .repeated()
+    let service_body = choice([comment, match_block])
+        .separated_by(newline_separator)
         .collect()
         .labelled("service_body")
         .map(Expr::ServiceBody)
@@ -401,7 +418,9 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .labelled("service_definition")
         .boxed();
 
-    service_decl.then_ignore(end())
+    let rules_parsing = service_decl.then_ignore(end());
+
+    rules_parsing
 }
 
 pub fn parse(stream: Vec<char>) -> Result<Expr, Vec<Simple<char>>> {

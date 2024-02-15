@@ -1,7 +1,7 @@
 service cloud.firestore {
+  // Comment
+
   match /databases/{database}/documents {
-
-
     function isSignedIn() {
       return request.auth != null;
     }
@@ -9,13 +9,14 @@ service cloud.firestore {
       return request.auth.token.email_verified;
     }
     function userExists() {
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      return exists(/databases/$(database)/documents/users/$(request));
     }
 
     // [READ] Data that exists on the Firestore document
     function existingData() {
       return resource.data;
     }
+
     // [WRITE] Data that is sent to a Firestore document
     function incomingData() {
       return request.resource.data;
@@ -28,7 +29,7 @@ service cloud.firestore {
 
     // Fetch a user from Firestore
     function getUserData() {
-      return get(/databases/$(database)/documents/accounts/$(request.auth.uid)).data
+      return get(/databases/$(database)/documents/accounts/$(request)).data;
     }
 
     // Fetch a user-specific field from Firestore
@@ -39,8 +40,8 @@ service cloud.firestore {
 
     // example application for functions
     match /orders/{orderId} {
-      allow create: if isSignedIn() && emailVerified() && isUser(incomingData().userId);
-      allow read, list, update, delete: if isSignedIn() && isUser(existingData().userId);
+      allow create: if isSignedIn() && emailVerified(3 == var);
+      allow read, list, update, delete: if isSignedIn() && isUser();
     }
 
   }
