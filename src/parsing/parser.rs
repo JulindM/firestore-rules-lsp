@@ -1,8 +1,6 @@
-use std::vec;
-
 use chumsky::{prelude::*, text::*};
 
-use crate::parsing::models::{ArithmeticOp, LogicOp};
+use crate::parsing::models::{ArithmeticOp, BinaryLogicOp, NestedOperator, UnaryLogicOp};
 
 use super::{
     errors::{gen_error, SimpleCharError},
@@ -11,6 +9,28 @@ use super::{
 
 fn is_path_spec_char(a: &char) -> bool {
     a.is_ascii_alphabetic()
+}
+
+fn generate_nested_expr(expr: Expr, nested_ops: Vec<(NestedOperator, Expr)>) -> Expr {
+    if nested_ops.is_empty() {
+        return expr;
+    };
+
+    if nested_ops.len() == 1 {
+        let (op, nested_expr) = nested_ops.last().unwrap();
+        return Expr::Nested(Box::new(expr), Box::new(nested_expr.clone()), op.clone());
+    }
+
+    let ((op, nested_expr), remaining) = nested_ops.split_first().unwrap();
+
+    Expr::Nested(
+        Box::new(expr),
+        Box::new(generate_nested_expr(
+            nested_expr.clone(),
+            remaining.to_vec(),
+        )),
+        op.clone(),
+    )
 }
 
 pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
@@ -101,21 +121,36 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         just("-").to(ArithmeticOp::Sub),
         just("*").to(ArithmeticOp::Mult),
         just("/").to(ArithmeticOp::Div),
+        just("%").to(ArithmeticOp::Mod),
     ])
     .labelled("arithmetic_op")
     .boxed();
 
     // TODO fix this mess of justs
-    let logic_op = choice([
-        just("&").then(just("&")).to(LogicOp::And),
-        just("|").then(just("|")).to(LogicOp::Or),
-        just("=").then(just("=")).to(LogicOp::Eq),
-        just("!").then(just("=")).to(LogicOp::Ineq),
+    let binary_logic_op = choice([
+        just("&").then(just("&")).to(BinaryLogicOp::And).boxed(),
+        just("|").then(just("|")).to(BinaryLogicOp::Or).boxed(),
+        just("=").then(just("=")).to(BinaryLogicOp::Eq).boxed(),
+        just("!").then(just("=")).to(BinaryLogicOp::Ineq).boxed(),
+        just(">").to(BinaryLogicOp::Greater).boxed(),
+        just(">")
+            .then(just("="))
+            .to(BinaryLogicOp::GreaterEq)
+            .boxed(),
+        keyword("in").to(BinaryLogicOp::In).boxed(),
+        keyword("is").to(BinaryLogicOp::Is).boxed(),
     ])
-    .labelled("logic_op")
+    .labelled("binary_logic_op")
     .boxed();
 
-    let equals = just("=").labelled("equals").boxed();
+    let unary_logic_op = choice([
+        just("!").to(UnaryLogicOp::Neg).boxed(),
+        just("-").to(UnaryLogicOp::Neg).boxed(),
+    ])
+    .labelled("unary_logic_op")
+    .boxed();
+
+    let assignment = just("=").labelled("assignment").boxed();
 
     // Test if _ is allowed in variable names
     let variable = ident().labelled("variable").map(Expr::Variable).boxed();
@@ -140,20 +175,52 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
                 .delimited_by(just("("), just(")"))
                 .padded()
                 .or_not()
-                .map(|vars| vars.unwrap_or(vec![])),
+                .map(|vars| vars.unwrap_or(vec![]))
+                .or_not(),
         )
         .map_err(gen_error(
             "function signature expected (call or definition)",
         ))
-        .map(|(fname, fargs)| Expr::FunctionSig(fname, fargs))
+        .map(|(fname, fargs)| Expr::FunctionSig(fname, fargs.unwrap_or(vec![])))
         .labelled("function_signature")
+        .boxed();
+
+    let indexing = just("[")
+        .ignore_then(int(10).try_map(|s: String, span| {
+            s.parse::<u32>()
+                .map_err(|_| gen_error("not a valid positive integer")(span))
+        }))
+        .then_ignore(just("]"))
+        .labelled("indexing")
+        .map(|num| (NestedOperator::Indexing, Expr::Number(num as i32)))
+        .boxed();
+
+    let field_access = just(".")
+        .ignore_then(variable.clone())
+        .map(|var| (NestedOperator::FieldAcess, var))
+        .labelled("indexing")
+        .boxed();
+
+    let atomic_valuable = choice([function_signature.clone(), variable.clone()])
+        .labelled("atomic_valuable")
+        .boxed();
+
+    let valuable = atomic_valuable
+        .then(choice([indexing, field_access]).repeated().or_not())
+        .map(|(atomic, nested_ops)| {
+            if nested_ops.is_none() {
+                return atomic;
+            }
+
+            generate_nested_expr(atomic, nested_ops.unwrap())
+        })
+        .labelled("valuable")
         .boxed();
 
     let arithmetic_expr = recursive(|expr| {
         let operand = choice([
-            function_signature.clone(),
-            variable.clone(),
-            number,
+            number.clone(),
+            valuable.clone(),
             expr.delimited_by(just("("), just(")")).boxed(),
         ]);
 
@@ -170,35 +237,43 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     .boxed();
 
     let logic_expr = recursive(|expr| {
-        let operand = choice([
-            function_signature.clone(),
-            variable.clone(),
+        let truthy_operand = choice([
+            valuable.clone(),
             keyword("true").to(Expr::Bool(true)).boxed(),
             keyword("false").to(Expr::Bool(false)).boxed(),
             expr.delimited_by(just("("), just(")")).boxed(),
-        ]);
+        ])
+        .boxed();
 
-        operand
+        let binary_truthy_operand = choice([truthy_operand.clone(), number]).boxed();
+        let binary_expression = binary_truthy_operand
             .clone()
             .map_err(gen_error("truthy operand expected"))
-            .then(logic_op.padded())
+            .then(binary_logic_op.padded())
             .map_err(gen_error("truthy operator expected"))
-            .then(operand)
+            .then(binary_truthy_operand.clone())
             .map_err(gen_error("truthy operand expected"))
             .map(|((o1, op), o2)| Expr::LogicExpression(Box::new(o1), Box::new(o2), op))
+            .boxed();
+
+        let unary_expression = unary_logic_op
+            .map_err(gen_error("unary logic operator expected"))
+            .then(truthy_operand.clone())
+            .map_err(gen_error("truthy operand expected"))
+            .map(|(op, o1)| Expr::UnaryLogicExpression(Box::new(o1), op))
+            .boxed();
+
+        choice([binary_expression, unary_expression, truthy_operand])
+            .labelled("logic expression")
+            .boxed()
     })
     .labelled("arithmetic_expr")
     .boxed();
 
-    let expression = choice([
-        logic_expr,
-        arithmetic_expr,
-        variable.clone(),
-        function_signature.clone(),
-    ])
-    .map_err(gen_error("expression expected"))
-    .labelled("expression")
-    .boxed();
+    let expression = choice([logic_expr.clone(), arithmetic_expr, valuable])
+        .map_err(gen_error("expression expected"))
+        .labelled("expression")
+        .boxed();
 
     //TODO let body
     let let_statement = {
@@ -206,7 +281,7 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
             .padded()
             .ignore_then(variable.clone())
             .map_err(gen_error("variable name expected"))
-            .then_ignore(equals.padded())
+            .then_ignore(assignment.padded())
             .map_err(gen_error("equals expected"))
             .then(expression.clone())
             .map_err(gen_error("arithmetic or logic expression expected"))
@@ -259,7 +334,7 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
 
     // TODO content
     let allow_content = (keyword("if").padded().map_err(gen_error("if expected")))
-        .ignore_then(variable)
+        .ignore_then(logic_expr)
         .map(|c| Expr::ConditionalAllow(Box::new(c)))
         .labelled("allow_content")
         .boxed();
