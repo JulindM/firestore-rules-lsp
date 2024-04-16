@@ -178,38 +178,59 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .labelled("number")
         .boxed();
 
-    let indexing = just("[")
-        .ignore_then(int(10).try_map(|s: String, span| {
-            s.parse::<u32>()
-                .map_err(|_| gen_error("not a valid positive integer")(span))
-        }))
-        .then_ignore(just("]"))
-        .labelled("indexing")
-        .map(|num| (NestedOperator::Indexing, Expr::Number(num as i32)))
-        .boxed();
-
-    let field_access = just(".")
-        .ignore_then(variable.clone())
-        .map(|var| (NestedOperator::FieldAcess, var))
-        .labelled("indexing")
-        .boxed();
+    let stringval = choice([
+        just("\"").ignore_then(take_until(just("\""))),
+        just("\'").ignore_then(take_until(just("\'"))),
+    ])
+    .labelled("string")
+    .map(|(strval, _)| strval)
+    .collect::<String>()
+    .map(Expr::String)
+    .boxed();
 
     let expression = recursive(|expr| {
         let function_call = ident()
             .then(
-                choice([expr.boxed(), accessible_path])
+                choice([expr.clone().boxed(), accessible_path])
                     .separated_by(just(","))
                     .delimited_by(just("("), just(")"))
                     .or_not()
                     .map(|function_params| function_params.unwrap_or(vec![])),
             )
             .map_err(gen_error("function call expected"))
-            .map(|(fname, fargs)| Expr::FunctionSig(fname, fargs))
+            .map(|(fname, fargs)| Expr::FunctionCall(fname, fargs))
             .labelled("function_call")
             .boxed();
 
-        let valueable = choice([function_call, variable.clone()])
-            .then(choice([indexing, field_access]).repeated().or_not())
+        let field_access = just(".")
+            .ignore_then(expr)
+            .map(|var| (NestedOperator::FieldAcess, var))
+            .labelled("indexing")
+            .boxed();
+
+        let number_indexing = just("[")
+            .ignore_then(int(10).try_map(|s: String, span| {
+                s.parse::<u32>()
+                    .map_err(|_| gen_error("not a valid positive integer")(span))
+            }))
+            .then_ignore(just("]"))
+            .labelled("indexing")
+            .map(|num| (NestedOperator::Indexing, Expr::Number(num as i32)))
+            .boxed();
+
+        let non_primitive_indexing = just("[")
+            .ignore_then(choice([stringval.clone(), function_call.clone()]))
+            .then_ignore(just("]"))
+            .map(|non_primitive_val| (NestedOperator::Indexing, non_primitive_val))
+            .labelled("indexing")
+            .boxed();
+
+        let non_primitive = choice([function_call, variable.clone(), stringval.clone()])
+            .then(
+                choice([number_indexing, non_primitive_indexing, field_access])
+                    .repeated()
+                    .or_not(),
+            )
             .map(|(atomic, nested_ops)| {
                 if nested_ops.is_none() {
                     return atomic;
@@ -217,45 +238,80 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
 
                 generate_nested_expr(atomic, nested_ops.unwrap())
             })
+            .labelled("a value returning expression expected")
             .labelled("valueable")
             .boxed();
 
-        let arithmetic_operand = choice([number.clone(), valueable.clone()])
+        let arithmetic_operand = choice([number.clone(), non_primitive.clone()])
+            .map_err(gen_error("a number operand expected"))
             .labelled("arithmetic_operand")
             .boxed();
-        let arithmetic_calculation = arithmetic_operand
-            .clone()
-            .then(arithmetic_op.padded())
-            .then(arithmetic_operand.clone())
-            .map(|((o1, op), o2)| Expr::ArithmeticExpr(Box::new(o1), Box::new(o2), op))
-            .labelled("arithmetic_calculation")
+
+        let binary_arithmetic_calc = recursive(|bin_arthm_expr| {
+            arithmetic_operand
+                .clone()
+                .then(arithmetic_op.padded())
+                .then(choice([
+                    bin_arthm_expr
+                        .clone()
+                        .delimited_by(just("("), just(")"))
+                        .clone()
+                        .boxed(),
+                    bin_arthm_expr.boxed(),
+                    arithmetic_operand.clone(),
+                ]))
+                .map(|((o1, op), o2)| Expr::ArithmeticExpr(Box::new(o1), Box::new(o2), op))
+        })
+        .labelled("arithmetic_calculation")
+        .boxed();
+
+        let boolean_operand = choice([
+            keyword("true").to(Expr::Bool(true)).boxed(),
+            keyword("false").to(Expr::Bool(false)).boxed(),
+            non_primitive.clone(),
+        ])
+        .map_err(gen_error("a boolean operand expected"))
+        .labelled("logical_operand")
+        .boxed();
+
+        let logical_operand = choice([boolean_operand.clone(), number])
+            .map_err(gen_error("a boolean operand expected"))
+            .labelled("logical_operand")
             .boxed();
-        let arithmetic_expr = choice([arithmetic_calculation, arithmetic_operand])
+        let unary_logic_expr = unary_logic_op
+            .then(non_primitive.clone())
+            .map(|(op, o1)| Expr::UnaryLogicExpression(Box::new(o1), op))
+            .boxed();
+
+        let binary_logic_expr = recursive(|bin_log_expr| {
+            logical_operand
+                .clone()
+                .then(binary_logic_op.padded())
+                .then(choice([
+                    bin_log_expr
+                        .clone()
+                        .delimited_by(just("("), just(")"))
+                        .boxed(),
+                    bin_log_expr.boxed(),
+                    unary_logic_expr.clone(),
+                    logical_operand,
+                ]))
+                .map(|((o1, op), o2)| Expr::LogicExpression(Box::new(o1), Box::new(o2), op))
+        })
+        .labelled("logic calculation")
+        .boxed();
+
+        let arithmetic_expr = choice([binary_arithmetic_calc, arithmetic_operand])
+            .map_err(gen_error("an arithmetic expression expected"))
             .labelled("arithmetic_expr")
             .boxed();
 
-        let logical_operand = choice([
-            keyword("true").to(Expr::Bool(true)).boxed(),
-            keyword("false").to(Expr::Bool(false)).boxed(),
-            valueable.clone(),
-            number,
-        ])
-        .boxed();
-        let binary_logic_expr = logical_operand
-            .clone()
-            .then(binary_logic_op.padded())
-            .then(logical_operand.clone())
-            .map(|((o1, op), o2)| Expr::LogicExpression(Box::new(o1), Box::new(o2), op))
-            .boxed();
-        let unary_logic_expression = unary_logic_op
-            .then(valueable.clone())
-            .map(|(op, o1)| Expr::UnaryLogicExpression(Box::new(o1), op))
-            .boxed();
-        let logic_expr = choice([binary_logic_expr, unary_logic_expression, logical_operand])
+        let logic_expr = choice([binary_logic_expr, unary_logic_expr, boolean_operand])
+            .map_err(gen_error("a logic expression expected"))
             .labelled("logic expression")
             .boxed();
 
-        choice([logic_expr, arithmetic_expr, valueable])
+        choice([logic_expr, arithmetic_expr, non_primitive])
     })
     .labelled("expression")
     .boxed();
@@ -263,18 +319,26 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     let let_statement = {
         let let_content = keyword("let")
             .padded()
-            .ignore_then(variable.clone())
-            .map_err(gen_error("variable name expected"))
-            .then_ignore(assignment.padded())
-            .map_err(gen_error("equals expected"))
-            .then(expression.clone())
-            .map_err(gen_error("arithmetic or logic expression expected"))
+            .ignore_then(
+                variable
+                    .clone()
+                    .map_err(gen_error("variable name expected")),
+            )
+            .then_ignore(assignment.padded().map_err(gen_error("equals expected")))
+            .then(
+                expression
+                    .clone()
+                    .map_err(gen_error("arithmetic or logic expression expected")),
+            )
             .map(|(var_name, expr)| {
                 Expr::VariableDef(Box::new(var_name.clone()), Box::new(expr.clone()))
             })
             .boxed();
 
-        statement!(let_content).labelled("let_statement").boxed()
+        statement!(let_content)
+            .map_err(gen_error("let expected"))
+            .labelled("let_statement")
+            .boxed()
     };
 
     let return_statement = {
@@ -286,6 +350,7 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
             .boxed();
 
         statement!(return_content)
+            .map_err(gen_error("return expected"))
             .labelled("return_statement")
             .boxed()
     };
@@ -294,7 +359,6 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .separated_by(newline_separator.clone())
         .or_not()
         .then(return_statement.then_ignore(newline_separator.clone()))
-        .map_err(gen_error("let or return expected"))
         .map(|(stmts, ret)| {
             Expr::FunctionBody(
                 stmts.unwrap_or(vec![]),

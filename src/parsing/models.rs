@@ -21,8 +21,10 @@ pub enum Expr {
     Return(Box<Expr>),
     AllAllow,
     Nested(Box<Expr>, Box<Expr>, NestedOperator),
+    FunctionCall(String, Vec<Expr>),
     Number(i32),
     Bool(bool),
+    String(String),
     Comment,
 }
 
