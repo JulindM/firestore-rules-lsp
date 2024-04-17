@@ -5,7 +5,7 @@ service cloud.firestore {
     function fun(arg1) {
       let c = !true;
       let c = !get(field);
-      return 1 + 3;
+      return 1 + 3 + (2 * get("yoo"));
     }
 
     function fun(arg1) {
@@ -13,6 +13,7 @@ service cloud.firestore {
       let var2 = true && get(f) && true;
       let var3 = "Hello";
       let var4 = 'Hello';
+      let c1 = [get(field), goti];
       return var;
     }
 

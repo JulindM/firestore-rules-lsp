@@ -1,42 +1,16 @@
 use chumsky::{prelude::*, text::*};
 
-use crate::parsing::models::{ArithmeticOp, BinaryLogicOp, NestedOperator, UnaryLogicOp};
+use crate::parsing::models::{ArithmeticOp, RelationOp, UnaryOp};
 
 use super::{
     errors::{gen_error, SimpleCharError},
     models::{AllowMethod, Expr},
 };
 
-fn is_path_spec_char(a: &char) -> bool {
-    a.is_ascii_alphabetic()
-}
-
-fn generate_nested_expr(expr: Expr, nested_ops: Vec<(NestedOperator, Expr)>) -> Expr {
-    if nested_ops.is_empty() {
-        return expr;
-    };
-
-    if nested_ops.len() == 1 {
-        let (op, nested_expr) = nested_ops.last().unwrap();
-        return Expr::Nested(Box::new(expr), Box::new(nested_expr.clone()), op.clone());
-    }
-
-    let ((op, nested_expr), remaining) = nested_ops.split_first().unwrap();
-
-    Expr::Nested(
-        Box::new(expr),
-        Box::new(generate_nested_expr(
-            nested_expr.clone(),
-            remaining.to_vec(),
-        )),
-        op.clone(),
-    )
-}
-
 pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
-    let semicolon = just(";").labelled("semicolon").boxed();
+    let semicolon = just(";").debug("semicolon").boxed();
 
-    let colon = just(":").labelled("colon").boxed();
+    let colon = just(":").debug("colon").boxed();
 
     let comment = whitespace()
         .then(just("/"))
@@ -55,46 +29,38 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .separated_by(just("."))
         .collect::<Vec<String>>()
         .map(|parts| parts.join("."))
-        .labelled("dotted_ident")
+        .debug("dotted_ident")
         .boxed();
 
-    let block_start = just("{").then(newline()).labelled("block_start").boxed();
+    let block_start = just("{").then(newline()).debug("block_start").boxed();
 
     let block_end = newline()
         .or_not()
         .then(whitespace())
         .then(just("}"))
-        .labelled("block_end")
+        .debug("block_end")
         .boxed();
 
-    // TODO fix this ugly hack
-    let pathspec = filter(|c| is_path_spec_char(c))
-        .repeated()
-        .at_least(1)
-        .collect::<String>()
-        .map(|spec| spec)
-        .labelled("path_spec")
-        .boxed();
+    let pathspec = ident().debug("path_spec").boxed();
 
     let path_part = pathspec
         .clone()
         .map(Expr::PathPart)
-        .labelled("path_part")
+        .debug("path_part")
         .boxed();
 
-    // better handling of dotted ident to nested valuable?
     let eval_path_part = dotted_ident
         .clone()
         .delimited_by(just("$("), just(")"))
         .map(Expr::EvalPathPart)
-        .labelled("eval_path")
+        .debug("eval_path")
         .boxed();
 
     let single_seg_wild_path = pathspec
         .clone()
         .delimited_by(just("{"), just("}"))
         .map(Expr::SingleSegWildPath)
-        .labelled("single_segment_wildcard")
+        .debug("single_segment_wildcard")
         .boxed();
 
     let rec_wild_path = pathspec
@@ -104,67 +70,59 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .then_ignore(just("*"))
         .delimited_by(just("{"), just("}"))
         .map(Expr::RecursiveWildPath)
-        .labelled("wildcard_pattern")
+        .debug("wildcard_pattern")
         .boxed();
 
-    let path_separator = just("/").labelled("path_separator").boxed();
+    let path_separator = just("/").debug("path_separator").boxed();
 
     let rule_path = choice([path_part.clone(), single_seg_wild_path, rec_wild_path])
         .separated_by(path_separator.clone())
         .allow_leading()
+        .at_least(1)
         .collect()
         .map(Expr::Path)
-        .labelled("rule_path")
+        .debug("rule_path")
         .boxed();
 
     let accessible_path = choice([path_part, eval_path_part])
         .separated_by(path_separator)
         .allow_leading()
+        .at_least(1)
         .collect()
         .map(Expr::Path)
-        .labelled("accessible_path")
+        .debug("accessible_path")
         .boxed();
 
-    let newline_separator = newline().labelled("whitespace_delimiter").boxed();
+    let newline_separator = newline().debug("whitespace_delimiter").boxed();
 
-    let arithmetic_op = choice([
+    let addition_op = choice([
         just("+").to(ArithmeticOp::Add),
         just("-").to(ArithmeticOp::Sub),
+    ])
+    .debug("addition_op")
+    .boxed();
+
+    let multiplication_op = choice([
         just("*").to(ArithmeticOp::Mult),
         just("/").to(ArithmeticOp::Div),
         just("%").to(ArithmeticOp::Mod),
     ])
-    .labelled("arithmetic_op")
+    .debug("mutliplication_op")
     .boxed();
 
-    // TODO fix this mess of justs
-    let binary_logic_op = choice([
-        just("&").then(just("&")).to(BinaryLogicOp::And).boxed(),
-        just("|").then(just("|")).to(BinaryLogicOp::Or).boxed(),
-        just("=").then(just("=")).to(BinaryLogicOp::Eq).boxed(),
-        just("!").then(just("=")).to(BinaryLogicOp::Ineq).boxed(),
-        just(">").to(BinaryLogicOp::Greater).boxed(),
-        just(">")
-            .then(just("="))
-            .to(BinaryLogicOp::GreaterEq)
-            .boxed(),
-        keyword("in").to(BinaryLogicOp::In).boxed(),
-        keyword("is").to(BinaryLogicOp::Is).boxed(),
+    let relation_op = choice([
+        just(">").then(just("=")).to(RelationOp::GreaterEq).boxed(),
+        just(">").to(RelationOp::Greater).boxed(),
+        just("<").then(just("=")).to(RelationOp::LessEq).boxed(),
+        just("<").to(RelationOp::Less).boxed(),
+        just("!").then(just("=")).to(RelationOp::Ineq).boxed(),
+        just("=").then(just("=")).to(RelationOp::Eq).boxed(),
+        keyword("in").to(RelationOp::In).boxed(),
     ])
-    .labelled("binary_logic_op")
+    .debug("relation op")
     .boxed();
 
-    let unary_logic_op = choice([
-        just("!").to(UnaryLogicOp::Neg).boxed(),
-        just("-").to(UnaryLogicOp::Neg).boxed(),
-    ])
-    .labelled("unary_logic_op")
-    .boxed();
-
-    let assignment = just("=").labelled("assignment").boxed();
-
-    // Test if _ is allowed in variable names
-    let variable = ident().labelled("variable").map(Expr::Variable).boxed();
+    let assignment = just("=").debug("assignment").boxed();
 
     let number = just("-")
         .to(-1)
@@ -175,202 +133,299 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
                 .map_err(|_| gen_error("not a valid integer")(span))
         }))
         .map(|(negation, digits)| Expr::Number(negation * digits))
-        .labelled("number")
+        .debug("number")
         .boxed();
 
     let stringval = choice([
         just("\"").ignore_then(take_until(just("\""))),
         just("\'").ignore_then(take_until(just("\'"))),
     ])
-    .labelled("string")
+    .debug("string")
     .map(|(strval, _)| strval)
     .collect::<String>()
     .map(Expr::String)
     .boxed();
 
-    let expression = recursive(|expr| {
-        let function_call = ident()
-            .then(
-                choice([expr.clone().boxed(), accessible_path])
-                    .separated_by(just(","))
-                    .delimited_by(just("("), just(")"))
-                    .or_not()
-                    .map(|function_params| function_params.unwrap_or(vec![])),
-            )
-            .map_err(gen_error("function call expected"))
-            .map(|(fname, fargs)| Expr::FunctionCall(fname, fargs))
-            .labelled("function_call")
+    let literal = choice([number, stringval.clone()]).debug("literal").boxed();
+
+    let mut value_expression = Recursive::declare();
+    let mut op_expression = Recursive::declare();
+
+    let expression = choice([op_expression.clone(), value_expression.clone()]).boxed();
+
+    value_expression.define(
+        {
+            let variable = ident().debug("variable").map(Expr::Variable).boxed();
+
+            let function_args = choice([
+                value_expression.clone().boxed(),
+                op_expression.clone().boxed(),
+                accessible_path,
+            ])
+            .clone()
+            .separated_by(just(",").padded())
+            .map(Expr::ExprList)
+            .boxed();
+            let function_call = ident()
+                .then(choice([
+                    just("(").then(just(")")).to(Expr::ExprList(vec![])).boxed(),
+                    function_args
+                        .clone()
+                        .padded()
+                        .delimited_by(just("("), just(")"))
+                        .boxed(),
+                ]))
+                .map(|(fname, exprlst)| Expr::FunctionCall(fname, Box::new(exprlst)))
+                .debug("function_call")
+                .boxed();
+
+            let array = choice([
+                just("[").then(just("]")).to(Expr::Array(vec![])).boxed(),
+                value_expression.clone().boxed(),
+            ])
+            .clone()
+            .separated_by(just(",").padded())
+            .delimited_by(just("["), just("]"))
+            .map(|exprsns| Expr::Array(exprsns))
+            .debug("array")
             .boxed();
 
-        let field_access = just(".")
-            .ignore_then(expr)
-            .map(|var| (NestedOperator::FieldAcess, var))
-            .labelled("indexing")
+            let primary = choice([
+                function_call.clone(),
+                variable.clone(),
+                array.clone(),
+                literal.clone(),
+            ])
+            .debug("primary")
             .boxed();
 
-        let number_indexing = just("[")
-            .ignore_then(int(10).try_map(|s: String, span| {
-                s.parse::<u32>()
-                    .map_err(|_| gen_error("not a valid positive integer")(span))
-            }))
-            .then_ignore(just("]"))
-            .labelled("indexing")
-            .map(|num| (NestedOperator::Indexing, Expr::Number(num as i32)))
-            .boxed();
-
-        let non_primitive_indexing = just("[")
-            .ignore_then(choice([stringval.clone(), function_call.clone()]))
-            .then_ignore(just("]"))
-            .map(|non_primitive_val| (NestedOperator::Indexing, non_primitive_val))
-            .labelled("indexing")
-            .boxed();
-
-        let non_primitive = choice([function_call, variable.clone(), stringval.clone()])
-            .then(
-                choice([number_indexing, non_primitive_indexing, field_access])
+            let member = primary
+                .clone()
+                .then(
+                    choice([
+                        just(".")
+                            .ignore_then(choice([function_call.clone(), variable.clone()]))
+                            .boxed(),
+                        choice([op_expression.clone(), value_expression.clone()])
+                            .clone()
+                            .delimited_by(just("["), just("]"))
+                            .boxed(),
+                    ])
                     .repeated()
-                    .or_not(),
-            )
-            .map(|(atomic, nested_ops)| {
-                if nested_ops.is_none() {
-                    return atomic;
-                }
+                    .at_least(1),
+                )
+                .foldl(|memb, exprsn| Expr::Member(Box::new(memb), Box::new(exprsn)))
+                .debug("member")
+                .boxed();
 
-                generate_nested_expr(atomic, nested_ops.unwrap())
-            })
-            .labelled("a value returning expression expected")
-            .labelled("valueable")
-            .boxed();
+            choice([function_call, member, variable, array, literal])
+        }
+        .debug("value expression")
+        .boxed(),
+    );
 
-        let arithmetic_operand = choice([number.clone(), non_primitive.clone()])
-            .map_err(gen_error("a number operand expected"))
-            .labelled("arithmetic_operand")
-            .boxed();
-
-        let binary_arithmetic_calc = recursive(|bin_arthm_expr| {
-            arithmetic_operand
+    op_expression.define(
+        {
+            let expression_operand = choice([op_expression.clone(), value_expression.clone()]);
+            let grouping = expression_operand
                 .clone()
-                .then(arithmetic_op.padded())
-                .then(choice([
-                    bin_arthm_expr
-                        .clone()
-                        .delimited_by(just("("), just(")"))
-                        .clone()
-                        .boxed(),
-                    bin_arthm_expr.boxed(),
-                    arithmetic_operand.clone(),
-                ]))
-                .map(|((o1, op), o2)| Expr::ArithmeticExpr(Box::new(o1), Box::new(o2), op))
-        })
-        .labelled("arithmetic_calculation")
-        .boxed();
+                .padded()
+                .delimited_by(just("("), just(")").padded())
+                .map(|exprssn| Expr::Atom(Box::new(exprssn)))
+                .debug("grouping")
+                .boxed();
 
-        let boolean_operand = choice([
-            keyword("true").to(Expr::Bool(true)).boxed(),
-            keyword("false").to(Expr::Bool(false)).boxed(),
-            non_primitive.clone(),
-        ])
-        .map_err(gen_error("a boolean operand expected"))
-        .labelled("logical_operand")
-        .boxed();
-
-        let logical_operand = choice([boolean_operand.clone(), number])
-            .map_err(gen_error("a boolean operand expected"))
-            .labelled("logical_operand")
-            .boxed();
-        let unary_logic_expr = unary_logic_op
-            .then(non_primitive.clone())
-            .map(|(op, o1)| Expr::UnaryLogicExpression(Box::new(o1), op))
+            let unary_operand = choice([grouping.clone(), expression_operand.clone().boxed()]);
+            let unary = choice([
+                just("!")
+                    .repeated()
+                    .at_least(1)
+                    .collect::<String>()
+                    .then(unary_operand.clone())
+                    .map(|(ops, memb)| {
+                        Expr::Unary(UnaryOp::NegExclamation, ops.len(), Box::new(memb))
+                    })
+                    .boxed(),
+                just("-")
+                    .repeated()
+                    .at_least(1)
+                    .collect::<String>()
+                    .then(unary_operand)
+                    .map(|(ops, memb)| {
+                        Expr::Unary(UnaryOp::DecrementMinus, ops.len(), Box::new(memb))
+                    })
+                    .boxed(),
+            ])
+            .debug("unary operation")
             .boxed();
 
-        let binary_logic_expr = recursive(|bin_log_expr| {
-            logical_operand
+            let mult_operand = choice([
+                unary.clone(),
+                grouping.clone(),
+                value_expression.clone().boxed(),
+            ])
+            .boxed();
+            let multiplication = mult_operand
                 .clone()
-                .then(binary_logic_op.padded())
-                .then(choice([
-                    bin_log_expr
-                        .clone()
-                        .delimited_by(just("("), just(")"))
-                        .boxed(),
-                    bin_log_expr.boxed(),
-                    unary_logic_expr.clone(),
-                    logical_operand,
-                ]))
-                .map(|((o1, op), o2)| Expr::LogicExpression(Box::new(o1), Box::new(o2), op))
-        })
-        .labelled("logic calculation")
-        .boxed();
+                .then(
+                    multiplication_op
+                        .padded()
+                        .then(mult_operand.clone())
+                        .repeated()
+                        .at_least(1),
+                )
+                .foldl(|o1, (op, o2)| Expr::ArithmeticOp(Box::new(o1), Box::new(o2), op))
+                .debug("multiplication")
+                .boxed();
 
-        let arithmetic_expr = choice([binary_arithmetic_calc, arithmetic_operand])
-            .map_err(gen_error("an arithmetic expression expected"))
-            .labelled("arithmetic_expr")
+            let add_operand = choice([
+                multiplication.clone(),
+                unary.clone(),
+                grouping.clone(),
+                value_expression.clone().boxed(),
+            ])
             .boxed();
+            let addition = add_operand
+                .clone()
+                .then(
+                    addition_op
+                        .padded()
+                        .then(add_operand.clone())
+                        .repeated()
+                        .at_least(1),
+                )
+                .foldl(|o1, (op, o2)| Expr::ArithmeticOp(Box::new(o1), Box::new(o2), op))
+                .debug("addition")
+                .boxed();
 
-        let logic_expr = choice([binary_logic_expr, unary_logic_expr, boolean_operand])
-            .map_err(gen_error("a logic expression expected"))
-            .labelled("logic expression")
-            .boxed();
+            let rel_operand = choice([
+                addition.clone(),
+                multiplication.clone(),
+                unary.clone(),
+                grouping.clone(),
+                value_expression.clone().boxed(),
+            ]);
+            let relation = rel_operand
+                .clone()
+                .then(
+                    relation_op
+                        .padded()
+                        .then(rel_operand.clone())
+                        .repeated()
+                        .at_least(1),
+                )
+                .foldl(|o1, (op, o2)| Expr::RelationOp(Box::new(o1), Box::new(o2), op))
+                .debug("relation")
+                .boxed();
 
-        choice([logic_expr, arithmetic_expr, non_primitive])
-    })
-    .labelled("expression")
-    .boxed();
+            let and_operand = choice([
+                relation.clone(),
+                addition.clone(),
+                multiplication.clone(),
+                unary.clone(),
+                grouping.clone(),
+                value_expression.clone().boxed(),
+            ]);
+            let conditional_and = and_operand
+                .clone()
+                .then(
+                    whitespace()
+                        .then(just("&").then(just("&")))
+                        .then(whitespace())
+                        .ignore_then(and_operand.clone())
+                        .repeated()
+                        .at_least(1),
+                )
+                .foldl(|o1, o2| Expr::ConditionalAnd(Box::new(o1), Box::new(o2)))
+                .debug("conditional_and")
+                .boxed();
+
+            let or_operand = choice([
+                conditional_and.clone(),
+                relation.clone(),
+                addition.clone(),
+                multiplication.clone(),
+                unary.clone(),
+                grouping.clone(),
+                value_expression.clone().boxed(),
+            ]);
+            let conditional_or = or_operand
+                .clone()
+                .then(
+                    whitespace()
+                        .then(just("|").then(just("|")))
+                        .then(whitespace())
+                        .ignore_then(or_operand.clone())
+                        .repeated()
+                        .at_least(1),
+                )
+                .foldl(|o1, o2| Expr::ConditionalOr(Box::new(o1), Box::new(o2)))
+                .debug("conditional_or")
+                .boxed();
+
+            let ternary = conditional_or
+                .clone()
+                .then_ignore(just("?").padded())
+                .then(conditional_or.clone())
+                .then_ignore(just(":").padded())
+                .then(expression_operand.clone())
+                .map(|((o1, o2), o3)| Expr::Ternary(Box::new(o1), Box::new(o2), Box::new(o3)))
+                .debug("ternary")
+                .boxed();
+
+            choice([
+                ternary,
+                conditional_or,
+                conditional_and,
+                relation,
+                addition,
+                multiplication,
+                unary,
+                grouping,
+            ])
+        }
+        .debug("op_expression")
+        .boxed(),
+    );
 
     let let_statement = {
         let let_content = keyword("let")
             .padded()
-            .ignore_then(
-                variable
-                    .clone()
-                    .map_err(gen_error("variable name expected")),
-            )
+            .ignore_then(ident().clone().map_err(gen_error("variable name expected")))
             .then_ignore(assignment.padded().map_err(gen_error("equals expected")))
-            .then(
-                expression
-                    .clone()
-                    .map_err(gen_error("arithmetic or logic expression expected")),
-            )
-            .map(|(var_name, expr)| {
-                Expr::VariableDef(Box::new(var_name.clone()), Box::new(expr.clone()))
-            })
+            .then(expression.clone().map_err(gen_error("expression expected")))
+            .map(|(var_name, expr)| Expr::VariableDef(var_name, Box::new(expr.clone())))
             .boxed();
 
-        statement!(let_content)
-            .map_err(gen_error("let expected"))
-            .labelled("let_statement")
-            .boxed()
+        statement!(let_content).debug("let_statement").boxed()
     };
 
     let return_statement = {
         let return_content = keyword("return")
             .padded()
-            .map_err(gen_error("return expected"))
-            .ignore_then(expression.clone())
-            .labelled("return")
+            .ignore_then(expression.clone().map_err(gen_error("expression expected")))
+            .debug("return")
             .boxed();
 
-        statement!(return_content)
-            .map_err(gen_error("return expected"))
-            .labelled("return_statement")
-            .boxed()
+        statement!(return_content).debug("return_statement").boxed()
     };
 
-    let function_body = choice([let_statement.boxed(), comment.clone().boxed()])
+    let function_body = let_statement
         .separated_by(newline_separator.clone())
         .or_not()
-        .then(return_statement.then_ignore(newline_separator.clone()))
+        .then(return_statement)
         .map(|(stmts, ret)| {
             Expr::FunctionBody(
                 stmts.unwrap_or(vec![]),
                 Box::new(Expr::Return(Box::new(ret))),
             )
         })
-        .labelled("function_body")
+        .debug("function_body")
         .boxed();
 
     let function_signature = ident()
         .then(
-            variable
+            ident()
                 .clone()
                 .separated_by(just(",").padded())
                 .delimited_by(just("("), just(")"))
@@ -383,7 +438,7 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
             "function signature expected (call or definition)",
         ))
         .map(|(fname, fargs)| Expr::FunctionSig(fname, fargs.unwrap_or(vec![])))
-        .labelled("function_signature")
+        .debug("function_signature")
         .boxed();
 
     let function_declaration = (keyword("function").padded())
@@ -394,14 +449,13 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
                 .delimited_by(block_start.clone(), block_end.clone()),
         )
         .map(|(fsig, fbody)| Expr::FunctionDecl(Box::new(fsig), Box::new(fbody)))
-        .labelled("function_declaration")
+        .debug("function_declaration")
         .boxed();
 
-    // TODO content
     let allow_content = (keyword("if").padded().map_err(gen_error("if expected")))
         .ignore_then(expression)
         .map(|c| Expr::ConditionalAllow(Box::new(c)))
-        .labelled("allow_content")
+        .debug("allow_content")
         .boxed();
 
     let methods = choice([
@@ -414,7 +468,7 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         keyword("delete").to(AllowMethod::Delete),
     ])
     .separated_by(just(",").padded())
-    .labelled("method")
+    .debug("method")
     .boxed();
 
     let allow = (keyword("allow").padded())
@@ -425,14 +479,14 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
             statement!(methods.then_ignore(colon).then(allow_content)).boxed(),
         ]))
         .map(|(meth, con)| Expr::Allow(meth, Box::new(con)))
-        .labelled("allow_rule")
+        .debug("allow_rule")
         .boxed();
 
     let match_declaration = whitespace()
         .then(keyword("match"))
         .then(whitespace())
         .ignore_then(rule_path)
-        .labelled("match_declaration")
+        .debug("match_declaration")
         .boxed();
 
     let match_block = recursive(|expr| {
@@ -455,8 +509,7 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
 
                         if !has_allow {
                             emit(gen_error(
-                                "An allow block must have at least 1 
-                                allow rule or match block",
+                                "An allow block must have at least 1 allow rule or match block",
                             )(span))
                         };
                         exprsns
@@ -465,13 +518,13 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
             .then_ignore(block_end.clone())
             .map(|(path, exprsns)| Expr::Match(Box::new(path), exprsns))
     })
-    .labelled("match_block")
+    .debug("match_block")
     .boxed();
 
     let service_body = choice([comment, match_block])
         .separated_by(newline_separator)
         .collect()
-        .labelled("service_body")
+        .debug("service_body")
         .map(Expr::ServiceBody)
         .boxed();
 
@@ -479,7 +532,7 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .ignore_then(dotted_ident.padded())
         .then(service_body.delimited_by(block_start, block_end))
         .map(|(name, body)| Expr::ServiceDefinition(name, Box::new(body)))
-        .labelled("service_definition")
+        .debug("service_definition")
         .boxed();
 
     let rules_parsing = service_decl.then_ignore(end());
@@ -487,6 +540,14 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     rules_parsing
 }
 
-pub fn parse(stream: Vec<char>) -> Result<Expr, Vec<Simple<char>>> {
+pub fn parse_debug(stream: Vec<char>) -> Option<Expr> {
+    let (res, errors) = generate_parser().parse_recovery_verbose(stream);
+
+    print!("{:?}", errors);
+
+    res
+}
+
+pub fn parse(stream: Vec<char>) -> Result<Expr, Vec<SimpleCharError>> {
     generate_parser().parse(stream)
 }

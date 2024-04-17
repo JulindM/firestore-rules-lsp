@@ -7,48 +7,47 @@ pub enum Expr {
     PathPart(String),
     EvalPathPart(String),
     Variable(String),
-    VariableDef(Box<Expr>, Box<Expr>),
+    VariableDef(String, Box<Expr>),
     SingleSegWildPath(String),
     RecursiveWildPath(String),
     Allow(Vec<AllowMethod>, Box<Expr>),
     ConditionalAllow(Box<Expr>),
-    FunctionSig(String, Vec<Expr>),
+    FunctionSig(String, Vec<String>),
     FunctionDecl(Box<Expr>, Box<Expr>),
     FunctionBody(Vec<Expr>, Box<Expr>),
-    LogicExpression(Box<Expr>, Box<Expr>, BinaryLogicOp),
-    UnaryLogicExpression(Box<Expr>, UnaryLogicOp),
-    ArithmeticExpr(Box<Expr>, Box<Expr>, ArithmeticOp),
+    ConditionalAnd(Box<Expr>, Box<Expr>),
+    ConditionalOr(Box<Expr>, Box<Expr>),
+    Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
+    Unary(UnaryOp, usize, Box<Expr>),
+    ArithmeticOp(Box<Expr>, Box<Expr>, ArithmeticOp),
+    RelationOp(Box<Expr>, Box<Expr>, RelationOp),
     Return(Box<Expr>),
     AllAllow,
-    Nested(Box<Expr>, Box<Expr>, NestedOperator),
-    FunctionCall(String, Vec<Expr>),
+    FunctionCall(String, Box<Expr>),
+    Atom(Box<Expr>),
     Number(i32),
-    Bool(bool),
     String(String),
+    Array(Vec<Expr>),
+    ExprList(Vec<Expr>),
+    Member(Box<Expr>, Box<Expr>),
     Comment,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum BinaryLogicOp {
-    And,
-    Or,
+pub enum RelationOp {
     Eq,
     Ineq,
     Greater,
     GreaterEq,
+    Less,
+    LessEq,
     In,
-    Is,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum UnaryLogicOp {
-    Neg,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum NestedOperator {
-    FieldAcess,
-    Indexing,
+pub enum UnaryOp {
+    NegExclamation,
+    DecrementMinus,
 }
 
 #[derive(Debug, Clone, PartialEq)]
