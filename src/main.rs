@@ -1,9 +1,8 @@
 mod parsing;
 
-use parsing::parser::parse;
 use std::env;
 
-use crate::parsing::parser::parse_debug;
+use crate::parsing::rules_parser::{parse, parse_debug};
 
 pub fn main() {
     let path: String = env::args().nth(1).expect("A path is needed");
