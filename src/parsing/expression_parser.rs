@@ -11,18 +11,18 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use super::{
     errors::SimpleCharError,
     helper_parsers::*,
-    models::{Expr, FireExpression, UnaryOp},
+    models::{EvalExpr, EvalExpression, RuleExpr, UnaryOp},
 };
 
-pub fn firestore_expression() -> BoxedParser<'static, char, FireExpression, SimpleCharError> {
+pub fn firestore_expression() -> BoxedParser<'static, char, EvalExpression, SimpleCharError> {
     take_until(semicolon().rewind())
         .map(|(content, _)| content)
         .collect::<String>()
-        .map(|res| FireExpression::new(res))
+        .map(|res| EvalExpression::new(res))
         .boxed()
 }
 
-pub fn expression() -> impl Parser<char, Expr, Error = SimpleCharError> {
+pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
     let mut value_expression = Recursive::declare();
     let mut op_expression = Recursive::declare();
 
@@ -34,27 +34,33 @@ pub fn expression() -> impl Parser<char, Expr, Error = SimpleCharError> {
                 accessible_path(),
             ])
             .separated_by(just(",").padded())
-            .map(Expr::ExprList)
+            .map(EvalExpr::ExprList)
             .boxed();
             let function_call = ident()
                 .then(choice([
-                    just("(").then(just(")")).to(Expr::ExprList(vec![])).boxed(),
+                    just("(")
+                        .then(just(")"))
+                        .to(EvalExpr::ExprList(vec![]))
+                        .boxed(),
                     function_args
                         .padded()
                         .delimited_by(just("("), just(")"))
                         .boxed(),
                 ]))
-                .map(|(fname, exprlst)| Expr::FunctionCall(fname, Box::new(exprlst)))
+                .map(|(fname, exprlst)| EvalExpr::FunctionCall(fname, Box::new(exprlst)))
                 .debug("function_call")
                 .boxed();
 
             let array = choice([
-                just("[").then(just("]")).to(Expr::Array(vec![])).boxed(),
+                just("[")
+                    .then(just("]"))
+                    .to(EvalExpr::Array(vec![]))
+                    .boxed(),
                 value_expression.clone().boxed(),
             ])
             .separated_by(just(",").padded())
             .delimited_by(just("["), just("]"))
-            .map(|exprsns| Expr::Array(exprsns))
+            .map(|exprsns| EvalExpr::Array(exprsns))
             .debug("array")
             .boxed();
 
@@ -75,7 +81,7 @@ pub fn expression() -> impl Parser<char, Expr, Error = SimpleCharError> {
                     .repeated()
                     .at_least(1),
                 )
-                .foldl(|memb, exprsn| Expr::Member(Box::new(memb), Box::new(exprsn)))
+                .foldl(|memb, exprsn| EvalExpr::Member(Box::new(memb), Box::new(exprsn)))
                 .debug("member")
                 .boxed();
 
@@ -93,7 +99,7 @@ pub fn expression() -> impl Parser<char, Expr, Error = SimpleCharError> {
                 .clone()
                 .padded()
                 .delimited_by(just("("), just(")").padded())
-                .map(|exprssn| Expr::Atom(Box::new(exprssn)))
+                .map(|exprssn| EvalExpr::Atom(Box::new(exprssn)))
                 .debug("grouping")
                 .boxed();
 
@@ -105,7 +111,7 @@ pub fn expression() -> impl Parser<char, Expr, Error = SimpleCharError> {
                     .collect::<String>()
                     .then(unary_operand.clone())
                     .map(|(ops, memb)| {
-                        Expr::Unary(UnaryOp::NegExclamation, ops.len(), Box::new(memb))
+                        EvalExpr::Unary(UnaryOp::NegExclamation, ops.len(), Box::new(memb))
                     })
                     .boxed(),
                 just("-")
@@ -114,7 +120,7 @@ pub fn expression() -> impl Parser<char, Expr, Error = SimpleCharError> {
                     .collect::<String>()
                     .then(unary_operand)
                     .map(|(ops, memb)| {
-                        Expr::Unary(UnaryOp::DecrementMinus, ops.len(), Box::new(memb))
+                        EvalExpr::Unary(UnaryOp::DecrementMinus, ops.len(), Box::new(memb))
                     })
                     .boxed(),
             ])
@@ -137,7 +143,7 @@ pub fn expression() -> impl Parser<char, Expr, Error = SimpleCharError> {
                         .repeated()
                         .at_least(1),
                 )
-                .foldl(|o1, (op, o2)| Expr::ArithmeticOp(Box::new(o1), Box::new(o2), op))
+                .foldl(|o1, (op, o2)| EvalExpr::ArithmeticOp(Box::new(o1), Box::new(o2), op))
                 .debug("multiplication")
                 .boxed();
 
@@ -157,7 +163,7 @@ pub fn expression() -> impl Parser<char, Expr, Error = SimpleCharError> {
                         .repeated()
                         .at_least(1),
                 )
-                .foldl(|o1, (op, o2)| Expr::ArithmeticOp(Box::new(o1), Box::new(o2), op))
+                .foldl(|o1, (op, o2)| EvalExpr::ArithmeticOp(Box::new(o1), Box::new(o2), op))
                 .debug("addition")
                 .boxed();
 
@@ -177,7 +183,7 @@ pub fn expression() -> impl Parser<char, Expr, Error = SimpleCharError> {
                         .repeated()
                         .at_least(1),
                 )
-                .foldl(|o1, (op, o2)| Expr::RelationOp(Box::new(o1), Box::new(o2), op))
+                .foldl(|o1, (op, o2)| EvalExpr::RelationOp(Box::new(o1), Box::new(o2), op))
                 .debug("relation")
                 .boxed();
 
@@ -199,7 +205,7 @@ pub fn expression() -> impl Parser<char, Expr, Error = SimpleCharError> {
                         .repeated()
                         .at_least(1),
                 )
-                .foldl(|o1, o2| Expr::ConditionalAnd(Box::new(o1), Box::new(o2)))
+                .foldl(|o1, o2| EvalExpr::ConditionalAnd(Box::new(o1), Box::new(o2)))
                 .debug("conditional_and")
                 .boxed();
 
@@ -222,7 +228,7 @@ pub fn expression() -> impl Parser<char, Expr, Error = SimpleCharError> {
                         .repeated()
                         .at_least(1),
                 )
-                .foldl(|o1, o2| Expr::ConditionalOr(Box::new(o1), Box::new(o2)))
+                .foldl(|o1, o2| EvalExpr::ConditionalOr(Box::new(o1), Box::new(o2)))
                 .debug("conditional_or")
                 .boxed();
 
@@ -232,7 +238,7 @@ pub fn expression() -> impl Parser<char, Expr, Error = SimpleCharError> {
                 .then(conditional_or.clone())
                 .then_ignore(just(":").padded())
                 .then(expression_operand)
-                .map(|((o1, o2), o3)| Expr::Ternary(Box::new(o1), Box::new(o2), Box::new(o3)))
+                .map(|((o1, o2), o3)| EvalExpr::Ternary(Box::new(o1), Box::new(o2), Box::new(o3)))
                 .debug("ternary")
                 .boxed();
 
@@ -254,102 +260,55 @@ pub fn expression() -> impl Parser<char, Expr, Error = SimpleCharError> {
     choice([op_expression, value_expression]).boxed()
 }
 
-pub fn recursive_parallel_expr_resolve(expression: Expr) -> Expr {
+pub fn recrsv_par_evalexpr_parse(expression: RuleExpr) -> RuleExpr {
     let start = Instant::now();
 
     let res = match expression {
-        Expr::VariableDef(v, mut fexpr) => {
-            fexpr.parse_content();
-            Expr::VariableDef(v, fexpr)
+        RuleExpr::VariableDef(v, mut fexpr) => {
+            fexpr.parse();
+            RuleExpr::VariableDef(v, fexpr)
         }
-        Expr::Return(mut fexpr) => {
-            fexpr.parse_content();
-            Expr::Return(fexpr)
+        RuleExpr::Return(mut fexpr) => {
+            fexpr.parse();
+            RuleExpr::Return(fexpr)
         }
-        Expr::ConditionalAllow(mut fexpr) => {
-            fexpr.parse_content();
-            Expr::ConditionalAllow(fexpr)
+        RuleExpr::ConditionalAllow(mut fexpr) => {
+            fexpr.parse();
+            RuleExpr::ConditionalAllow(fexpr)
         }
-        Expr::ServiceDefinition(v, expr) => {
-            Expr::ServiceDefinition(v, Box::new(recursive_parallel_expr_resolve(*expr)))
+        RuleExpr::ServiceDefinition(v, expr) => {
+            RuleExpr::ServiceDefinition(v, Box::new(recrsv_par_evalexpr_parse(*expr)))
         }
-        Expr::ServiceBody(exprsns) => Expr::ServiceBody(
+        RuleExpr::ServiceBody(exprsns) => RuleExpr::ServiceBody(
             exprsns
                 .into_par_iter()
-                .map(recursive_parallel_expr_resolve)
+                .map(recrsv_par_evalexpr_parse)
                 .collect(),
         ),
-        Expr::Match(v, exprsns) => Expr::Match(
+        RuleExpr::Match(v, exprsns) => RuleExpr::Match(
             v,
             exprsns
                 .into_par_iter()
-                .map(recursive_parallel_expr_resolve)
+                .map(recrsv_par_evalexpr_parse)
                 .collect(),
         ),
-        Expr::Path(exprsns) => Expr::Path(
+        RuleExpr::Path(exprsns) => RuleExpr::Path(
             exprsns
                 .into_par_iter()
-                .map(recursive_parallel_expr_resolve)
+                .map(recrsv_par_evalexpr_parse)
                 .collect(),
         ),
-        Expr::Allow(v, expr) => Expr::Allow(v, Box::new(recursive_parallel_expr_resolve(*expr))),
-        Expr::FunctionDecl(e1, e2) => Expr::FunctionDecl(
-            Box::new(recursive_parallel_expr_resolve(*e1)),
-            Box::new(recursive_parallel_expr_resolve(*e2)),
+        RuleExpr::Allow(v, expr) => RuleExpr::Allow(v, Box::new(recrsv_par_evalexpr_parse(*expr))),
+        RuleExpr::FunctionDecl(e1, e2) => RuleExpr::FunctionDecl(
+            Box::new(recrsv_par_evalexpr_parse(*e1)),
+            Box::new(recrsv_par_evalexpr_parse(*e2)),
         ),
-        Expr::ConditionalAnd(e1, e2) => Expr::ConditionalAnd(
-            Box::new(recursive_parallel_expr_resolve(*e1)),
-            Box::new(recursive_parallel_expr_resolve(*e2)),
-        ),
-        Expr::ConditionalOr(e1, e2) => Expr::ConditionalAnd(
-            Box::new(recursive_parallel_expr_resolve(*e1)),
-            Box::new(recursive_parallel_expr_resolve(*e2)),
-        ),
-        Expr::FunctionBody(exprsns, expr) => Expr::FunctionBody(
+        RuleExpr::FunctionBody(exprsns, expr) => RuleExpr::FunctionBody(
             exprsns
                 .into_par_iter()
-                .map(recursive_parallel_expr_resolve)
+                .map(recrsv_par_evalexpr_parse)
                 .collect(),
-            Box::new(recursive_parallel_expr_resolve(*expr)),
-        ),
-        Expr::Ternary(e1, e2, e3) => Expr::Ternary(
-            Box::new(recursive_parallel_expr_resolve(*e1)),
-            Box::new(recursive_parallel_expr_resolve(*e2)),
-            Box::new(recursive_parallel_expr_resolve(*e3)),
-        ),
-        Expr::Unary(o, s, expr) => {
-            Expr::Unary(o, s, Box::new(recursive_parallel_expr_resolve(*expr)))
-        }
-        Expr::ArithmeticOp(e1, e2, o) => Expr::ArithmeticOp(
-            Box::new(recursive_parallel_expr_resolve(*e1)),
-            Box::new(recursive_parallel_expr_resolve(*e2)),
-            o,
-        ),
-        Expr::RelationOp(e1, e2, o) => Expr::RelationOp(
-            Box::new(recursive_parallel_expr_resolve(*e1)),
-            Box::new(recursive_parallel_expr_resolve(*e2)),
-            o,
-        ),
-        Expr::FunctionCall(s, expr) => {
-            Expr::FunctionCall(s, Box::new(recursive_parallel_expr_resolve(*expr)))
-        }
-
-        Expr::Atom(expr) => Expr::Atom(Box::new(recursive_parallel_expr_resolve(*expr))),
-        Expr::Array(exprsns) => Expr::Array(
-            exprsns
-                .into_par_iter()
-                .map(recursive_parallel_expr_resolve)
-                .collect(),
-        ),
-        Expr::ExprList(exprsns) => Expr::ExprList(
-            exprsns
-                .into_par_iter()
-                .map(recursive_parallel_expr_resolve)
-                .collect(),
-        ),
-        Expr::Member(e1, e2) => Expr::Member(
-            Box::new(recursive_parallel_expr_resolve(*e1)),
-            Box::new(recursive_parallel_expr_resolve(*e2)),
+            Box::new(recrsv_par_evalexpr_parse(*expr)),
         ),
         expr => expr,
     };

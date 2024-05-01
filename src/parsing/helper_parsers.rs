@@ -6,7 +6,7 @@ use chumsky::{
 
 use super::{
     errors::{gen_error, SimpleCharError},
-    models::{ArithmeticOp, Expr, RelationOp},
+    models::{ArithmeticOp, EvalExpr, RelationOp, RuleExpr},
 };
 
 pub fn inline_whitespace() -> BoxedParser<'static, char, (), SimpleCharError> {
@@ -48,40 +48,43 @@ pub fn block_end() -> BoxedParser<'static, char, (), SimpleCharError> {
         .debug("block_end")
         .boxed()
 }
-pub fn variable() -> BoxedParser<'static, char, Expr, SimpleCharError> {
-    ident().debug("variable").map(Expr::Variable).boxed()
+pub fn variable() -> BoxedParser<'static, char, EvalExpr, SimpleCharError> {
+    ident().debug("variable").map(EvalExpr::Variable).boxed()
 }
 
 pub fn pathspec() -> BoxedParser<'static, char, String, SimpleCharError> {
     ident().debug("path_spec").boxed()
 }
 
-pub fn path_part() -> BoxedParser<'static, char, Expr, SimpleCharError> {
-    pathspec().map(Expr::PathPart).debug("path_part").boxed()
+pub fn path_part() -> BoxedParser<'static, char, RuleExpr, SimpleCharError> {
+    pathspec()
+        .map(RuleExpr::PathPart)
+        .debug("path_part")
+        .boxed()
 }
 
-pub fn eval_path_part() -> BoxedParser<'static, char, Expr, SimpleCharError> {
+pub fn eval_path_part() -> BoxedParser<'static, char, RuleExpr, SimpleCharError> {
     dotted_ident()
         .delimited_by(just("$("), just(")"))
-        .map(Expr::EvalPathPart)
+        .map(RuleExpr::EvalPathPart)
         .debug("eval_path")
         .boxed()
 }
-pub fn single_seg_wild_path() -> BoxedParser<'static, char, Expr, SimpleCharError> {
+pub fn single_seg_wild_path() -> BoxedParser<'static, char, RuleExpr, SimpleCharError> {
     pathspec()
         .delimited_by(just("{"), just("}"))
-        .map(Expr::SingleSegWildPath)
+        .map(RuleExpr::SingleSegWildPath)
         .debug("single_segment_wildcard")
         .boxed()
 }
 
-pub fn rec_wild_path() -> BoxedParser<'static, char, Expr, SimpleCharError> {
+pub fn rec_wild_path() -> BoxedParser<'static, char, RuleExpr, SimpleCharError> {
     pathspec()
         .then_ignore(just("="))
         .then_ignore(just("*"))
         .then_ignore(just("*"))
         .delimited_by(just("{"), just("}"))
-        .map(Expr::RecursiveWildPath)
+        .map(RuleExpr::RecursiveWildPath)
         .debug("wildcard_pattern")
         .boxed()
 }
@@ -90,24 +93,24 @@ pub fn path_separator() -> BoxedParser<'static, char, (), SimpleCharError> {
     just("/").ignored().debug("path_separator").boxed()
 }
 
-pub fn rule_path() -> BoxedParser<'static, char, Expr, SimpleCharError> {
+pub fn rule_path() -> BoxedParser<'static, char, RuleExpr, SimpleCharError> {
     choice([path_part(), single_seg_wild_path(), rec_wild_path()])
         .separated_by(path_separator())
         .allow_leading()
         .at_least(1)
         .collect()
-        .map(Expr::Path)
+        .map(RuleExpr::Path)
         .debug("rule_path")
         .boxed()
 }
 
-pub fn accessible_path() -> BoxedParser<'static, char, Expr, SimpleCharError> {
+pub fn accessible_path() -> BoxedParser<'static, char, EvalExpr, SimpleCharError> {
     choice([path_part(), eval_path_part()])
         .separated_by(path_separator())
         .allow_leading()
         .at_least(1)
         .collect()
-        .map(Expr::Path)
+        .map(EvalExpr::AccessiblePath)
         .debug("accessible_path")
         .boxed()
 }
@@ -153,7 +156,7 @@ pub fn assignment() -> BoxedParser<'static, char, (), SimpleCharError> {
     just("=").ignored().debug("assignment").boxed()
 }
 
-pub fn number() -> BoxedParser<'static, char, Expr, SimpleCharError> {
+pub fn number() -> BoxedParser<'static, char, EvalExpr, SimpleCharError> {
     just("-")
         .to(-1)
         .or_not()
@@ -162,12 +165,12 @@ pub fn number() -> BoxedParser<'static, char, Expr, SimpleCharError> {
             s.parse::<i32>()
                 .map_err(|_| gen_error("not a valid integer")(span))
         }))
-        .map(|(negation, digits)| Expr::Number(negation * digits))
+        .map(|(negation, digits)| EvalExpr::Number(negation * digits))
         .debug("number")
         .boxed()
 }
 
-pub fn stringval() -> BoxedParser<'static, char, Expr, SimpleCharError> {
+pub fn stringval() -> BoxedParser<'static, char, EvalExpr, SimpleCharError> {
     choice([
         just("\"").ignore_then(take_until(just("\""))),
         just("\'").ignore_then(take_until(just("\'"))),
@@ -175,19 +178,19 @@ pub fn stringval() -> BoxedParser<'static, char, Expr, SimpleCharError> {
     .debug("string")
     .map(|(strval, _)| strval)
     .collect::<String>()
-    .map(Expr::String)
+    .map(EvalExpr::String)
     .boxed()
 }
 
-pub fn literal() -> BoxedParser<'static, char, Expr, SimpleCharError> {
+pub fn literal() -> BoxedParser<'static, char, EvalExpr, SimpleCharError> {
     choice([number(), stringval()]).debug("literal").boxed()
 }
 
-pub fn comment() -> BoxedParser<'static, char, Expr, SimpleCharError> {
+pub fn comment() -> BoxedParser<'static, char, RuleExpr, SimpleCharError> {
     whitespace()
         .then(just("/"))
         .then(just("/"))
         .then(take_until(newline().rewind()))
-        .map(|_| Expr::Comment)
+        .map(|_| RuleExpr::Comment)
         .boxed()
 }
