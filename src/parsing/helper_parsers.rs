@@ -1,6 +1,6 @@
 use chumsky::{
-    primitive::{choice, just, take_until},
-    text::{ident, int, keyword, newline, whitespace},
+    primitive::{choice, filter, just, take_until},
+    text::{ident, int, keyword, newline, whitespace, Character},
     BoxedParser, Parser,
 };
 
@@ -8,6 +8,13 @@ use super::{
     errors::{gen_error, SimpleCharError},
     models::{ArithmeticOp, Expr, RelationOp},
 };
+
+pub fn inline_whitespace() -> BoxedParser<'static, char, (), SimpleCharError> {
+    filter(|c: &char| c.is_inline_whitespace())
+        .repeated()
+        .ignored()
+        .boxed()
+}
 
 pub fn dotted_ident() -> BoxedParser<'static, char, String, SimpleCharError> {
     ident()
@@ -28,16 +35,14 @@ pub fn colon() -> BoxedParser<'static, char, (), SimpleCharError> {
 
 pub fn block_start() -> BoxedParser<'static, char, (), SimpleCharError> {
     just("{")
-        .then(newline())
+        .then(whitespace())
         .ignored()
         .debug("block_start")
         .boxed()
 }
 
 pub fn block_end() -> BoxedParser<'static, char, (), SimpleCharError> {
-    newline()
-        .or_not()
-        .then(whitespace())
+    whitespace()
         .then(just("}"))
         .ignored()
         .debug("block_end")

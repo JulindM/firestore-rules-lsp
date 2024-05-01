@@ -2,7 +2,12 @@ use chumsky::{prelude::*, text::*};
 
 use crate::parsing::models::AllowMethod;
 
-use super::{errors::*, expression_parser::firestore_expression, helper_parsers::*, models::Expr};
+use super::{
+    errors::*,
+    expression_parser::{firestore_expression, recursive_parallel_expr_resolve},
+    helper_parsers::*,
+    models::Expr,
+};
 
 pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     macro_rules! statement {
@@ -48,13 +53,12 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
 
     let function_signature = ident()
         .then(
-            ident()
+            (ident()
                 .separated_by(just(",").padded())
-                .delimited_by(just("("), just(")"))
-                .padded()
-                .or_not()
-                .map(|vars| vars.unwrap_or(vec![]))
-                .or_not(),
+                .delimited_by(just("("), just(")")))
+            .or_not()
+            .map(|vars| vars.unwrap_or(vec![]))
+            .or_not(),
         )
         .map_err(gen_error(
             "function signature expected (call or definition)",
@@ -63,12 +67,12 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .debug("function_signature")
         .boxed();
 
-    let function_declaration = (keyword("function").padded())
+    let function = (keyword("function").then_ignore(inline_whitespace()))
         .ignore_then(function_signature)
         .then(
             function_body
-                .padded()
-                .delimited_by(block_start(), block_end()),
+                .delimited_by(block_start(), block_end())
+                .padded(),
         )
         .map(|(fsig, fbody)| Expr::FunctionDecl(Box::new(fsig), Box::new(fbody)))
         .debug("function_declaration")
@@ -93,7 +97,7 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
     .debug("method")
     .boxed();
 
-    let allow = (keyword("allow").padded())
+    let allow = (keyword("allow").then(inline_whitespace()))
         .ignore_then(choice([
             statement!(methods.clone())
                 .map(|m| (m, Expr::AllAllow))
@@ -104,19 +108,18 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
         .debug("allow_rule")
         .boxed();
 
-    let match_declaration = whitespace()
-        .then(keyword("match"))
-        .then(whitespace())
+    let match_declaration = keyword("match")
+        .then(inline_whitespace())
         .ignore_then(rule_path())
         .debug("match_declaration")
         .boxed();
 
-    let match_block = recursive(|expr| {
+    let match_block = recursive(|match_expr| {
         match_declaration
             .then_ignore(whitespace().then(block_start()))
             .then(
-                choice([comment(), allow, function_declaration, expr.boxed()])
-                    .separated_by(newline_separator())
+                choice([allow, function.clone(), match_expr.boxed()])
+                    .separated_by(whitespace())
                     .at_least(1)
                     .boxed()
                     // There has to be a smarter way than validating
@@ -138,38 +141,45 @@ pub fn generate_parser() -> impl Parser<char, Expr, Error = SimpleCharError> {
                     }),
             )
             .then_ignore(block_end())
+            .padded()
             .map(|(path, exprsns)| Expr::Match(Box::new(path), exprsns))
     })
     .debug("match_block")
     .boxed();
 
-    let service_body = choice([comment(), match_block])
-        .separated_by(newline_separator())
+    let service_body = choice([comment(), match_block, function])
+        .separated_by(whitespace())
         .collect()
         .debug("service_body")
         .map(Expr::ServiceBody)
         .boxed();
 
     let service_decl = keyword("service")
-        .ignore_then(dotted_ident().padded())
+        .then(inline_whitespace())
+        .ignore_then(dotted_ident().then_ignore(whitespace()))
         .then(service_body.delimited_by(block_start(), block_end()))
+        .padded()
         .map(|(name, body)| Expr::ServiceDefinition(name, Box::new(body)))
         .debug("service_definition")
         .boxed();
 
-    let rules_parsing = service_decl.then_ignore(end());
+    let rules_parsing = service_decl.then_ignore(whitespace().then(end()));
 
     rules_parsing
 }
 
-pub fn parse_debug(stream: Vec<char>) -> Option<Expr> {
-    let (res, errors) = generate_parser().parse_recovery_verbose(stream);
+pub fn parse(stream: Vec<char>, debug: bool) -> Result<Expr, Vec<SimpleCharError>> {
+    let ast = {
+        if debug {
+            let res = generate_parser().parse_recovery_verbose(stream);
+            Ok(res.0.expect("Some expression expected"))
+        } else {
+            generate_parser().parse(stream)
+        }
+    };
 
-    print!("{:?}", errors);
-
-    res
-}
-
-pub fn parse(stream: Vec<char>) -> Result<Expr, Vec<SimpleCharError>> {
-    generate_parser().parse(stream)
+    match ast {
+        Ok(expr) => Ok(recursive_parallel_expr_resolve(expr)),
+        e => e,
+    }
 }
