@@ -1,6 +1,6 @@
-use chumsky::Parser;
+use chumsky::{error::Simple, Parser};
 
-use super::{errors::SimpleCharError, expression_parser::expression};
+use super::expression_parser::expression;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuleExpr {
@@ -20,7 +20,6 @@ pub enum RuleExpr {
     FunctionBody(Vec<RuleExpr>, Box<RuleExpr>),
     Return(Box<EvalExpression>),
     AllAllow,
-    Comment,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -82,7 +81,7 @@ pub enum AllowMethod {
 #[derive(Clone, PartialEq)]
 pub struct EvalExpression {
     content: String,
-    parsed_content: Option<Result<EvalExpr, Vec<SimpleCharError>>>,
+    parsed_content: Option<Result<EvalExpr, Vec<Simple<char>>>>,
 }
 
 impl std::fmt::Debug for EvalExpression {

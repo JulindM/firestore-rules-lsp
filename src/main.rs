@@ -20,5 +20,8 @@ pub fn main() {
 
     let ast = parse(stream, false);
 
-    print!("{:#?}", ast)
+    match ast {
+        Ok(_) => (),
+        Err(errs) => print!("{:#?}", errs),
+    }
 }

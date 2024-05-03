@@ -9,12 +9,11 @@ use chumsky::{
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use super::{
-    errors::SimpleCharError,
     helper_parsers::*,
     models::{EvalExpr, EvalExpression, RuleExpr, UnaryOp},
 };
 
-pub fn firestore_expression() -> BoxedParser<'static, char, EvalExpression, SimpleCharError> {
+pub fn firestore_expression() -> BoxedParser<'static, char, EvalExpression, Simple<char>> {
     take_until(semicolon().rewind())
         .map(|(content, _)| content)
         .collect::<String>()
@@ -22,7 +21,7 @@ pub fn firestore_expression() -> BoxedParser<'static, char, EvalExpression, Simp
         .boxed()
 }
 
-pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
+pub fn expression() -> impl Parser<char, EvalExpr, Error = Simple<char>> {
     let mut value_expression = Recursive::declare();
     let mut op_expression = Recursive::declare();
 
@@ -48,7 +47,6 @@ pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
                         .boxed(),
                 ]))
                 .map(|(fname, exprlst)| EvalExpr::FunctionCall(fname, Box::new(exprlst)))
-                .debug("function_call")
                 .boxed();
 
             let array = choice([
@@ -61,12 +59,10 @@ pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
             .separated_by(just(",").padded())
             .delimited_by(just("["), just("]"))
             .map(|exprsns| EvalExpr::Array(exprsns))
-            .debug("array")
             .boxed();
 
-            let primary = choice([array.clone(), function_call.clone(), variable(), literal()])
-                .debug("primary")
-                .boxed();
+            let primary =
+                choice([array.clone(), function_call.clone(), variable(), literal()]).boxed();
 
             let member = primary
                 .then(
@@ -82,12 +78,10 @@ pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
                     .at_least(1),
                 )
                 .foldl(|memb, exprsn| EvalExpr::Member(Box::new(memb), Box::new(exprsn)))
-                .debug("member")
                 .boxed();
 
             choice([array, function_call, member, variable(), literal()])
         }
-        .debug("value expression")
         .boxed(),
     );
 
@@ -100,7 +94,6 @@ pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
                 .padded()
                 .delimited_by(just("("), just(")").padded())
                 .map(|exprssn| EvalExpr::Atom(Box::new(exprssn)))
-                .debug("grouping")
                 .boxed();
 
             let unary_operand = choice([grouping.clone(), expression_operand.clone().boxed()]);
@@ -124,7 +117,6 @@ pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
                     })
                     .boxed(),
             ])
-            .debug("unary operation")
             .boxed();
 
             let mult_operand = choice([
@@ -144,7 +136,6 @@ pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
                         .at_least(1),
                 )
                 .foldl(|o1, (op, o2)| EvalExpr::ArithmeticOp(Box::new(o1), Box::new(o2), op))
-                .debug("multiplication")
                 .boxed();
 
             let add_operand = choice([
@@ -164,7 +155,6 @@ pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
                         .at_least(1),
                 )
                 .foldl(|o1, (op, o2)| EvalExpr::ArithmeticOp(Box::new(o1), Box::new(o2), op))
-                .debug("addition")
                 .boxed();
 
             let rel_operand = choice([
@@ -184,7 +174,6 @@ pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
                         .at_least(1),
                 )
                 .foldl(|o1, (op, o2)| EvalExpr::RelationOp(Box::new(o1), Box::new(o2), op))
-                .debug("relation")
                 .boxed();
 
             let and_operand = choice([
@@ -206,7 +195,6 @@ pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
                         .at_least(1),
                 )
                 .foldl(|o1, o2| EvalExpr::ConditionalAnd(Box::new(o1), Box::new(o2)))
-                .debug("conditional_and")
                 .boxed();
 
             let or_operand = choice([
@@ -229,7 +217,6 @@ pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
                         .at_least(1),
                 )
                 .foldl(|o1, o2| EvalExpr::ConditionalOr(Box::new(o1), Box::new(o2)))
-                .debug("conditional_or")
                 .boxed();
 
             let ternary = conditional_or
@@ -239,7 +226,6 @@ pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
                 .then_ignore(just(":").padded())
                 .then(expression_operand)
                 .map(|((o1, o2), o3)| EvalExpr::Ternary(Box::new(o1), Box::new(o2), Box::new(o3)))
-                .debug("ternary")
                 .boxed();
 
             choice([
@@ -253,7 +239,6 @@ pub fn expression() -> impl Parser<char, EvalExpr, Error = SimpleCharError> {
                 ternary,
             ])
         }
-        .debug("op_expression")
         .boxed(),
     );
 
@@ -315,7 +300,7 @@ pub fn recrsv_par_evalexpr_parse(expression: RuleExpr) -> RuleExpr {
 
     let elapsed_time = start.elapsed().as_secs();
 
-    if elapsed_time > 2 {
+    if elapsed_time > 5 {
         println!("-------");
         println!("Worker done in {:?}s", elapsed_time);
         println!("The offending epxr:\n${:?}", res.clone());

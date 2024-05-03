@@ -1,6 +1,6 @@
-use chumsky::{prelude::*, text::*};
+use std::ops::Range;
 
-use crate::parsing::models::AllowMethod;
+use chumsky::{prelude::*, text::*};
 
 use super::{
     errors::*,
@@ -9,33 +9,28 @@ use super::{
     models::RuleExpr,
 };
 
-pub fn generate_parser() -> impl Parser<char, RuleExpr, Error = SimpleCharError> {
-    macro_rules! statement {
-        ($p: expr) => {
-            $p.then_ignore(semicolon())
-        };
-    }
-
+pub fn generate_parser() -> impl Parser<char, RuleExpr, Error = Simple<char>> {
     let let_statement = {
         let let_content = keyword("let")
+            .map_err(merge_custom_in_simple("let expected"))
             .padded()
-            .ignore_then(ident().map_err(gen_error("variable name expected")))
-            .then_ignore(assignment().padded().map_err(gen_error("equals expected")))
-            .then(firestore_expression().map_err(gen_error("expression expected")))
+            .ignore_then(ident().map_err(merge_custom_in_simple("variable name expected")))
+            .then_ignore(assignment().padded())
+            .then(firestore_expression())
             .map(|(var_name, expr)| RuleExpr::VariableDef(var_name, Box::new(expr)))
             .boxed();
 
-        statement!(let_content).debug("let_statement").boxed()
+        let_content.then_ignore(semicolon()).boxed()
     };
 
     let return_statement = {
         let return_content = keyword("return")
+            .map_err(merge_custom_in_simple("return expected"))
             .padded()
-            .ignore_then(firestore_expression().map_err(gen_error("expression expected")))
-            .debug("return")
+            .ignore_then(firestore_expression())
             .boxed();
 
-        statement!(return_content).debug("return_statement").boxed()
+        return_content.then_ignore(semicolon()).boxed()
     };
 
     let function_body = let_statement
@@ -48,26 +43,23 @@ pub fn generate_parser() -> impl Parser<char, RuleExpr, Error = SimpleCharError>
                 Box::new(RuleExpr::Return(Box::new(ret))),
             )
         })
-        .debug("function_body")
         .boxed();
 
     let function_signature = ident()
+        .map_err(custom_simple("function name expected"))
+        .padded_by(inline_whitespace())
         .then(
             (ident()
                 .separated_by(just(",").padded())
+                .or_not()
                 .delimited_by(just("("), just(")")))
-            .or_not()
             .map(|vars| vars.unwrap_or(vec![]))
             .or_not(),
         )
-        .map_err(gen_error(
-            "function signature expected (call or definition)",
-        ))
         .map(|(fname, fargs)| RuleExpr::FunctionSig(fname, fargs.unwrap_or(vec![])))
-        .debug("function_signature")
         .boxed();
 
-    let function = (keyword("function").then_ignore(inline_whitespace()))
+    let function = keyword("function")
         .ignore_then(function_signature)
         .then(
             function_body
@@ -75,43 +67,35 @@ pub fn generate_parser() -> impl Parser<char, RuleExpr, Error = SimpleCharError>
                 .padded(),
         )
         .map(|(fsig, fbody)| RuleExpr::FunctionDecl(Box::new(fsig), Box::new(fbody)))
-        .debug("function_declaration")
         .boxed();
 
-    let allow_content = (keyword("if").padded().map_err(gen_error("if expected")))
+    let allow_content = keyword("if")
+        .map_err(custom_simple("if expected"))
+        .padded()
         .ignore_then(firestore_expression())
         .map(|c| RuleExpr::ConditionalAllow(Box::new(c)))
         .debug("allow_content")
         .boxed();
 
-    let methods = choice([
-        keyword("read").to(AllowMethod::Read),
-        keyword("write").to(AllowMethod::Write),
-        keyword("get").to(AllowMethod::Get),
-        keyword("list").to(AllowMethod::List),
-        keyword("create").to(AllowMethod::Create),
-        keyword("update").to(AllowMethod::Update),
-        keyword("delete").to(AllowMethod::Delete),
-    ])
-    .separated_by(just(",").padded())
-    .debug("method")
-    .boxed();
-
-    let allow = (keyword("allow").then(inline_whitespace()))
-        .ignore_then(choice([
-            statement!(methods.clone())
-                .map(|m| (m, RuleExpr::AllAllow))
+    let allow = keyword("allow")
+        .ignore_then(inline_whitespace())
+        .ignore_then(
+            method()
+                .map_err(custom_simple("unknown rule"))
+                .separated_by(just(","))
+                .then(colon().ignore_then(allow_content).or_not())
+                .map(|(m, expr)| match expr {
+                    Some(expr) => RuleExpr::Allow(m, Box::new(expr)),
+                    None => RuleExpr::AllAllow,
+                })
                 .boxed(),
-            statement!(methods.then_ignore(colon()).then(allow_content)).boxed(),
-        ]))
-        .map(|(meth, con)| RuleExpr::Allow(meth, Box::new(con)))
-        .debug("allow_rule")
+        )
+        .then_ignore(semicolon())
         .boxed();
 
     let match_declaration = keyword("match")
         .then(inline_whitespace())
         .ignore_then(rule_path())
-        .debug("match_declaration")
         .boxed();
 
     let match_block = recursive(|match_expr| {
@@ -120,61 +104,88 @@ pub fn generate_parser() -> impl Parser<char, RuleExpr, Error = SimpleCharError>
             .then(
                 choice([allow, function.clone(), match_expr.boxed()])
                     .separated_by(whitespace())
-                    .at_least(1)
-                    .boxed()
-                    // There has to be a smarter way than validating
-                    // but I cant seem to be smart enough to find it
-                    .validate(|exprsns, span, emit| {
-                        let has_allow = exprsns.iter().any(|s| match s {
-                            RuleExpr::Match(_, _) => true,
-                            RuleExpr::Allow(_, _) => true,
-                            RuleExpr::AllAllow => true,
-                            _ => false,
-                        });
-
-                        if !has_allow {
-                            emit(gen_error(
-                                "An allow block must have at least 1 allow rule or match block",
-                            )(span))
-                        };
-                        exprsns
-                    }),
+                    .validate(at_least("allow, function or match expected", 1))
+                    .validate(rule_existence_validator),
             )
             .then_ignore(block_end())
             .padded()
             .map(|(path, exprsns)| RuleExpr::Match(Box::new(path), exprsns))
     })
-    .debug("match_block")
     .boxed();
 
-    let service_body = choice([comment(), match_block, function])
+    let service_body = choice([function, match_block])
         .separated_by(whitespace())
         .collect()
-        .debug("service_body")
+        .validate(at_least("allow or function expected", 1))
+        .validate(rule_existence_validator)
         .map(RuleExpr::ServiceBody)
         .boxed();
 
     let service_decl = keyword("service")
+        .map_err(custom_simple("service expected"))
         .then(inline_whitespace())
-        .ignore_then(dotted_ident().then_ignore(whitespace()))
+        .ignore_then(
+            dotted_ident()
+                .map_err(custom_simple("service name expected (cloud.firestore)"))
+                .then_ignore(whitespace()),
+        )
         .then(service_body.delimited_by(block_start(), block_end()))
         .padded()
-        .map(|(name, body)| RuleExpr::ServiceDefinition(name, Box::new(body)))
-        .debug("service_definition")
-        .boxed();
+        .map(|(name, body)| RuleExpr::ServiceDefinition(name, Box::new(body)));
 
     let rules_parsing = service_decl.then_ignore(whitespace().then(end()));
 
     rules_parsing
 }
 
-pub fn parse(stream: Vec<char>, debug: bool) -> Result<RuleExpr, Vec<SimpleCharError>> {
+fn at_least(
+    msg: &str,
+    min_len: usize,
+) -> impl Fn(Vec<RuleExpr>, Range<usize>, &mut dyn FnMut(Simple<char>)) -> Vec<RuleExpr> + '_ {
+    move |exprsns, span, emit| {
+        if exprsns.len() < min_len {
+            let err = custom_span(msg)(span);
+            emit(err)
+        }
+
+        exprsns
+    }
+}
+
+fn rule_existence_validator(
+    exprsns: Vec<RuleExpr>,
+    span: Range<usize>,
+    emit: &mut dyn FnMut(Simple<char>),
+) -> Vec<RuleExpr> {
+    let has_allow = exprsns.iter().any(|s| match s {
+        RuleExpr::Match(_, _) => true,
+        RuleExpr::Allow(_, _) => true,
+        RuleExpr::AllAllow => true,
+        _ => false,
+    });
+
+    if !has_allow {
+        let err = custom_span("A rule block must have at least a rule or match block")(span);
+
+        emit(err)
+    };
+
+    exprsns
+}
+
+pub fn parse(stream: Vec<char>, debug: bool) -> Result<RuleExpr, Vec<Simple<char>>> {
     let ast = {
+        let rules_parser = generate_parser();
+
         if debug {
-            let res = generate_parser().parse_recovery_verbose(stream);
-            Ok(res.0.expect("Some expression expected"))
+            let res = rules_parser.parse_recovery_verbose(stream);
+
+            match res.0 {
+                None => Err(res.1),
+                _ => Ok(res.0.unwrap()),
+            }
         } else {
-            generate_parser().parse(stream)
+            rules_parser.parse(stream)
         }
     };
 
