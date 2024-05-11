@@ -1,8 +1,9 @@
 mod parsing;
+mod repr;
 
 use std::env;
 
-use crate::parsing::rules_parser::parse;
+use crate::{parsing::rules_parser::parse, repr::representations::Service};
 
 pub fn main() {
     rayon::ThreadPoolBuilder::new()
@@ -21,7 +22,10 @@ pub fn main() {
     let ast = parse(stream, false);
 
     match ast {
-        Ok(_) => (),
+        Ok(tree) => {
+            let repr = Service::generate_from_service_definition(tree);
+            print!("{:#?}", repr);
+        }
         Err(errs) => print!("{:#?}", errs),
     }
 }
