@@ -1,8 +1,11 @@
-use std::fmt::Debug;
+use std::{
+    borrow::{Borrow, BorrowMut},
+    fmt::Debug,
+};
 
 use crate::parsing::models::{AllowMethod, EvalExpression, RuleExpr};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Function {
     name: String,
     parameters: Vec<String>,
@@ -38,7 +41,7 @@ impl Function {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Rule {
     rule_types: Vec<AllowMethod>,
     expression: Option<EvalExpression>,
@@ -63,7 +66,7 @@ impl Rule {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MatchBody {
     functions: Vec<Function>,
     rules: Vec<Rule>,
@@ -96,7 +99,7 @@ impl MatchBody {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Path {
     pathspec: Vec<String>,
 }
@@ -133,7 +136,7 @@ impl Path {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Match {
     path: Path,
     match_content: MatchBody,
@@ -167,5 +170,43 @@ impl Service {
             },
             _ => panic!("Expected a service definition"),
         }
+    }
+
+    pub fn get_variables(&self) -> Vec<String> {
+        let mut vars: Vec<String> = vec![];
+
+        for func in self.match_content.functions.iter() {
+            vars.append(func.variables.clone().as_mut());
+        }
+
+        fn get_funcs_of_match_recrsv(match_def: &mut Match) -> Vec<Function> {
+            let mut funcs: Vec<Function> = vec![];
+
+            funcs.append(&mut match_def.match_content.functions);
+
+            if match_def.match_content.functions.is_empty() {
+                return funcs;
+            }
+
+            funcs.append(
+                match_def
+                    .match_content
+                    .matches
+                    .iter_mut()
+                    .flat_map(get_funcs_of_match_recrsv)
+                    .collect::<Vec<Function>>()
+                    .as_mut(),
+            );
+
+            return funcs;
+        }
+
+        for rule in self.match_content.matches.iter() {
+            let funcs: Vec<Function> = get_funcs_of_match_recrsv(&mut rule.clone());
+
+            vars.append(&mut funcs.iter().flat_map(|f| f.variables.clone()).collect())
+        }
+
+        return vars;
     }
 }

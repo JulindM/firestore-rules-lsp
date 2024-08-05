@@ -82,7 +82,7 @@ pub fn generate_parser() -> impl Parser<char, RuleExpr, Error = Simple<char>> {
         .ignore_then(
             method()
                 .map_err(custom_simple("unknown rule"))
-                .separated_by(just(","))
+                .separated_by(just(",").padded())
                 .then(colon().ignore_then(allow_content).or_not())
                 .map(|(m, expr)| match expr {
                     Some(expr) => RuleExpr::Allow(m, Box::new(expr)),

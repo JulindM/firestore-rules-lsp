@@ -24,7 +24,7 @@ pub fn main() {
     match ast {
         Ok(tree) => {
             let repr = Service::generate_from_service_definition(tree);
-            print!("{:#?}", repr);
+            print!("{:#?}", repr.get_variables());
         }
         Err(errs) => print!("{:#?}", errs),
     }
