@@ -3,5 +3,9 @@ name = "firestore-rules-lsp"
 version = "0.1.0"
 edition = "2021"
 
+[build-dependencies]
+cc="*"
+
 [dependencies]
 tree-sitter = "0.23.0"
+tree-sitter-firestore-rules = {path = "../tree-sitter-firestore_rules"}

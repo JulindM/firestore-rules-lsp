@@ -1,4 +1,3 @@
-/target
-.vscode
+**/.vscode
 **/secret.rules
 **/.DS_Store
