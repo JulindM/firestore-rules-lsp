@@ -1,3 +1,4 @@
 /target
 .vscode
 **/secret.rules
+**/.DS_Store
