@@ -64,9 +64,11 @@ module.exports = grammar({
       )
     ),
 
+    variable: $ => $.identifier,
+
     primary: $ => choice(
       $.literal,
-      $.identifier,
+      $.variable,
       seq("(", $.expr, ")"),
       seq("[", optional($.expr_list), "]"),
       $.function_call
@@ -85,37 +87,28 @@ module.exports = grammar({
     ),
 
     member: $ => prec.left(
-      1,
+      8,
       choice(
-        $.primary,
-        seq($.member, ".", $.identifier),
-        seq($.member, ".", $.function_call),
-        seq($.member, "[", $.expr, "]"),
-      ),
+        seq(repeat1(seq(choice($.member, $.primary), ".")), choice($.variable, $.function_call)),
+        seq(repeat1(choice($.member, $.primary)), seq("[", $.expr, "]"))),
     ),
 
     unary: $ => prec.right(
-      2, choice(
-        $.member,
-        seq(repeat1("!"), $.member),
-        seq(repeat1("-"), $.member),
+      7,
+      choice(
+        seq(repeat1("!"), $.expr),
+        seq(repeat1("-"), $.expr),
       ),
     ),
 
     multiplication: $ => prec.left(
-      3,
-      seq(
-        optional(seq($.multiplication, choice("*", "/", "%"))),
-        $.unary
-      ),
+      6,
+      seq($.expr, choice("*", "/", "%"), $.expr)
     ),
 
     addition: $ => prec.left(
-      4,
-      seq(
-        optional(seq($.addition, choice("+", "-"))),
-        $.multiplication
-      ),
+      5,
+      seq($.expr, choice("+", "-"), $.expr)
     ),
 
     relation_op: _ => choice(
@@ -123,37 +116,35 @@ module.exports = grammar({
     ),
 
     relation: $ => prec.left(
-      5,
-      seq(
-        optional(seq($.relation, $.relation_op)),
-        $.addition
-      ),
+      4,
+      seq($.expr, $.relation_op, $.expr),
     ),
 
     conditional_and: $ => prec.left(
-      6,
-      seq(
-        optional(seq($.conditional_and, "&&")),
-        $.relation
-      ),
+      3,
+      seq($.expr, "&&", $.expr),
     ),
 
     conditional_or: $ => prec.left(
-      7,
-      seq(
-        optional(seq($.conditional_or, "||")),
-        $.conditional_and,
-      ),
+      2,
+      seq($.expr, "||", $.expr),
     ),
 
     ternary: $ => prec.right(
-      8,
-      seq("?", $.conditional_or, $.expr),
+      1,
+      seq($.expr, "?", $.expr, ":", $.expr),
     ),
 
-    expr: $ => seq(
+    expr: $ => choice(
+      $.ternary,
       $.conditional_or,
-      optional($.ternary),
+      $.conditional_and,
+      $.relation,
+      $.addition,
+      $.multiplication,
+      $.unary,
+      $.member,
+      $.primary,
     ),
 
     expr_list: $ => seq(
