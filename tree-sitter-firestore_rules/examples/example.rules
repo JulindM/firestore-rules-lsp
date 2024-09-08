@@ -14,6 +14,7 @@ service cloud.firestore {
       let var3 = "Hello";
       let var4 = 'Hello';
       let c1 = [get(field), goti];
+      //comment here
       return var;
     }
 
@@ -25,7 +26,7 @@ service cloud.firestore {
     match /{path}/one {
       allow read;
       allow create: if true;
-      allow update: if var.field.method().again(val["hello"]);
+      allow update: if var.field.method().again(val["hello"]); //comment here
       allow update: if var.field.method().again(val["hello"]).field;
       allow delete: if var.indexable_field[3];
     }

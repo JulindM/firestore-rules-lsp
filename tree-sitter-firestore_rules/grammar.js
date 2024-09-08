@@ -4,12 +4,19 @@
 module.exports = grammar({
   name: 'firestore_rules',
 
+  extras: $ => [
+    $.comment,
+    /\s/,
+  ],
+
   rules: {
     source_file: $ => seq(
       token('service'),
       token('cloud.firestore'),
       seq("{", $.match_body, "}"),
     ),
+
+    comment: $ => /\/\/.*\r?\n/,
 
     identifier: _ => /[_a-zA-Z][_a-zA-Z0-9]*/,
 
@@ -152,28 +159,28 @@ module.exports = grammar({
       repeat(seq(",", $.expr))
     ),
 
-    variable_assignment: $ => seq("let", field("variable", $.identifier), "=", $.expr, ";"),
-
     return: $ => seq("return", $.expr, ";"),
 
+    variable_assignment: $ => seq("let", $.variable, "=", $.expr, ";"),
+
     function_block: $ => seq(
-      "{",
       repeat($.variable_assignment),
       $.return,
-      "}"
     ),
 
     function_def: $ => seq(
       'function',
       field('name', $.identifier),
-      field('param',
-        seq(
-          "(",
-          optional(seq($.identifier, repeat(seq(",", $.identifier)))),
-          ")",
+      "(",
+      field(
+        'param',
+        optional(
+          seq($.identifier, repeat(seq(",", $.identifier)))
         ),
       ),
+      ")", "{",
       $.function_block,
+      "}"
     ),
 
     path_segment: $ => choice(
@@ -197,15 +204,20 @@ module.exports = grammar({
 
     rule: $ => seq(
       "allow",
-      $.method,
-      repeat(seq(",", $.method)),
+      field(
+        "rule",
+        seq(
+          $.method,
+          repeat(seq(",", $.method)),
+        ),
+      ),
       optional(seq(": if", $.expr)),
       ";"
     ),
 
     match_def: $ => seq(
       "match",
-      $.path,
+      field("path", $.path),
       seq("{", $.match_body, "}")
     ),
 

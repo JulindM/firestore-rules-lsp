@@ -191,16 +191,8 @@
       },
       "param": {
         "multiple": true,
-        "required": true,
+        "required": false,
         "types": [
-          {
-            "type": "(",
-            "named": false
-          },
-          {
-            "type": ")",
-            "named": false
-          },
           {
             "type": ",",
             "named": false
@@ -276,17 +268,24 @@
   {
     "type": "match_def",
     "named": true,
-    "fields": {},
+    "fields": {
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "path",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
           "type": "match_body",
-          "named": true
-        },
-        {
-          "type": "path",
           "named": true
         }
       ]
@@ -465,17 +464,28 @@
   {
     "type": "rule",
     "named": true,
-    "fields": {},
+    "fields": {
+      "rule": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": ",",
+            "named": false
+          },
+          {
+            "type": "method",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
-      "multiple": true,
-      "required": true,
+      "multiple": false,
+      "required": false,
       "types": [
         {
           "type": "expr",
-          "named": true
-        },
-        {
-          "type": "method",
           "named": true
         }
       ]
@@ -563,24 +573,17 @@
   {
     "type": "variable_assignment",
     "named": true,
-    "fields": {
-      "variable": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    },
+    "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
           "type": "expr",
+          "named": true
+        },
+        {
+          "type": "variable",
           "named": true
         }
       ]
@@ -701,6 +704,10 @@
   {
     "type": "cloud.firestore",
     "named": false
+  },
+  {
+    "type": "comment",
+    "named": true
   },
   {
     "type": "create",
