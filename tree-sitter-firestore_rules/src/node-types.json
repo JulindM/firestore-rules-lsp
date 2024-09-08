@@ -85,6 +85,10 @@
           "named": true
         },
         {
+          "type": "indexing",
+          "named": true
+        },
+        {
           "type": "member",
           "named": true
         },
@@ -216,6 +220,44 @@
     }
   },
   {
+    "type": "indexing",
+    "named": true,
+    "fields": {
+      "index": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "[",
+            "named": false
+          },
+          {
+            "type": "]",
+            "named": false
+          },
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      },
+      "object": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "member",
+            "named": true
+          },
+          {
+            "type": "primary",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "literal",
     "named": true,
     "fields": {},
@@ -294,32 +336,39 @@
   {
     "type": "member",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "expr",
-          "named": true
-        },
-        {
-          "type": "function_call",
-          "named": true
-        },
-        {
-          "type": "member",
-          "named": true
-        },
-        {
-          "type": "primary",
-          "named": true
-        },
-        {
-          "type": "variable",
-          "named": true
-        }
-      ]
+    "fields": {
+      "field": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "function_call",
+            "named": true
+          },
+          {
+            "type": "variable",
+            "named": true
+          }
+        ]
+      },
+      "object": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "member",
+            "named": true
+          },
+          {
+            "type": "primary",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -360,7 +409,26 @@
   {
     "type": "path_segment",
     "named": true,
-    "fields": {},
+    "fields": {
+      "path": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "globalPathSegment",
+            "named": false
+          },
+          {
+            "type": "multiPathSegment",
+            "named": false
+          },
+          {
+            "type": "singlePathSegment",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": false,
       "required": false,
@@ -465,6 +533,20 @@
     "type": "rule",
     "named": true,
     "fields": {
+      "condition": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": ": if",
+            "named": false
+          },
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      },
       "rule": {
         "multiple": true,
         "required": true,
@@ -479,16 +561,6 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "expr",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -731,6 +803,10 @@
   },
   {
     "type": "get",
+    "named": false
+  },
+  {
+    "type": "globalPathSegment",
     "named": false
   },
   {

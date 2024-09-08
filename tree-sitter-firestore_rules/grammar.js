@@ -93,11 +93,20 @@ module.exports = grammar({
       ),
     ),
 
+    indexing: $ => prec.left(
+      8,
+      seq(
+        field("object", choice($.member, $.primary)),
+        field("index", seq("[", $.expr, "]"))
+      ),
+    ),
+
     member: $ => prec.left(
       8,
-      choice(
-        seq(repeat1(seq(choice($.member, $.primary), ".")), choice($.variable, $.function_call)),
-        seq(repeat1(choice($.member, $.primary)), seq("[", $.expr, "]"))),
+      seq(
+        field("object", seq(choice($.member, $.primary), ".")),
+        field("field", choice($.variable, $.function_call)),
+      ),
     ),
 
     unary: $ => prec.right(
@@ -151,6 +160,7 @@ module.exports = grammar({
       $.multiplication,
       $.unary,
       $.member,
+      $.indexing,
       $.primary,
     ),
 
@@ -185,9 +195,9 @@ module.exports = grammar({
 
     path_segment: $ => choice(
       $.identifier,
-      seq("(", $.identifier, ")"),
-      alias(seq("{", $.identifier, "}"), "singlePathSegment"),
-      alias(seq("{", $.identifier, "=**}"), "multiPathSegment"),
+      alias(seq("(", field("path", $.identifier), ")"), "globalPathSegment"),
+      alias(seq("{", field("path", $.identifier), "}"), "singlePathSegment"),
+      alias(seq("{", field("path", $.identifier), "=**}"), "multiPathSegment"),
     ),
 
     path: $ => repeat1(seq("/", $.path_segment)),
@@ -211,7 +221,10 @@ module.exports = grammar({
           repeat(seq(",", $.method)),
         ),
       ),
-      optional(seq(": if", $.expr)),
+      field(
+        "condition",
+        optional(seq(": if", $.expr))
+      ),
       ";"
     ),
 
