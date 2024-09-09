@@ -11,10 +11,12 @@ module.exports = grammar({
 
   rules: {
     source_file: $ => seq(
-      token('service'),
-      token('cloud.firestore'),
-      seq("{", $.match_body, "}"),
+      $.service_name,
+      $.match_body,
     ),
+
+    service_name: $ =>
+      seq(token('service'), token('cloud.firestore')),
 
     comment: $ => /\/\/.*\r?\n/,
 
@@ -60,12 +62,19 @@ module.exports = grammar({
       choice("\\", "?", "\"", "\'", "`"),
     )),
 
+    path_segment: $ => choice(
+      alias($.identifier, "pathPart"),
+      alias(seq("$(", field("path", $.expr), ")"), "exprPathPart"),
+    ),
+
+    path: $ => repeat1(seq("/", $.path_segment)),
+
     function_call: $ => prec.left(
       1,
       seq(
         field("name", $.identifier),
         choice(
-          seq("(", $.pathspec, ")"),
+          seq("(", $.path, ")"),
           seq("(", optional($.expr_list), ")"),
         )
       )
@@ -79,18 +88,6 @@ module.exports = grammar({
       seq("(", $.expr, ")"),
       seq("[", optional($.expr_list), "]"),
       $.function_call
-    ),
-
-    eval_pathpart: $ => seq("$(", $.expr, ")"),
-
-    pathspec: $ => repeat1(
-      seq(
-        "/",
-        choice(
-          $.identifier,
-          $.eval_pathpart,
-        ),
-      ),
     ),
 
     indexing: $ => prec.left(
@@ -179,28 +176,32 @@ module.exports = grammar({
     ),
 
     function_def: $ => seq(
-      'function',
-      field('name', $.identifier),
+      "function",
+      field("name", $.identifier),
       "(",
       field(
-        'param',
+        "param",
         optional(
           seq($.identifier, repeat(seq(",", $.identifier)))
         ),
       ),
       ")", "{",
-      $.function_block,
+      field("block", $.function_block),
       "}"
     ),
 
-    path_segment: $ => choice(
-      $.identifier,
-      alias(seq("(", field("path", $.identifier), ")"), "globalPathSegment"),
-      alias(seq("{", field("path", $.identifier), "}"), "singlePathSegment"),
-      alias(seq("{", field("path", $.identifier), "=**}"), "multiPathSegment"),
-    ),
 
-    path: $ => repeat1(seq("/", $.path_segment)),
+    collection_path_seg: _ => /\/[a-zA-Z]+/,
+    single_path_seg: _ => /\/\{[a-zA-Z]+\}/,
+    multi_path_seg: _ => /\/\{[a-zA-Z]+=\*\*\}/,
+
+    match_path: $ => repeat1(
+      choice(
+        $.collection_path_seg,
+        $.single_path_seg,
+        $.multi_path_seg,
+      ),
+    ),
 
     method: $ => choice(
       "read",
@@ -212,7 +213,7 @@ module.exports = grammar({
       "delete",
     ),
 
-    rule: $ => seq(
+    rule_def: $ => seq(
       "allow",
       field(
         "rule",
@@ -230,10 +231,20 @@ module.exports = grammar({
 
     match_def: $ => seq(
       "match",
-      field("path", $.path),
-      seq("{", $.match_body, "}")
+      field("path", $.match_path),
+      field("match_body", $.match_body),
     ),
 
-    match_body: $ => repeat1(choice($.function_def, $.match_def, $.rule)),
+    match_body: $ => seq(
+      "{",
+      repeat1(
+        choice(
+          field("function_def", $.function_def),
+          field("match_def", $.match_def),
+          field("rule_ed", $.rule_def),
+        )
+      ),
+      "}"
+    ),
   }
 })

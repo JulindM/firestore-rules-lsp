@@ -5,6 +5,19 @@
       "type": "SEQ",
       "members": [
         {
+          "type": "SYMBOL",
+          "name": "service_name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "match_body"
+        }
+      ]
+    },
+    "service_name": {
+      "type": "SEQ",
+      "members": [
+        {
           "type": "TOKEN",
           "content": {
             "type": "STRING",
@@ -17,23 +30,6 @@
             "type": "STRING",
             "value": "cloud.firestore"
           }
-        },
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "{"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "match_body"
-            },
-            {
-              "type": "STRING",
-              "value": "}"
-            }
-          ]
         }
       ]
     },
@@ -219,6 +215,62 @@
         ]
       }
     },
+    "path_segment": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "identifier"
+          },
+          "named": false,
+          "value": "pathPart"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "STRING",
+                "value": "$("
+              },
+              {
+                "type": "FIELD",
+                "name": "path",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "expr"
+                }
+              },
+              {
+                "type": "STRING",
+                "value": ")"
+              }
+            ]
+          },
+          "named": false,
+          "value": "exprPathPart"
+        }
+      ]
+    },
+    "path": {
+      "type": "REPEAT1",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "/"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "path_segment"
+          }
+        ]
+      }
+    },
     "function_call": {
       "type": "PREC_LEFT",
       "value": 1,
@@ -245,7 +297,7 @@
                   },
                   {
                     "type": "SYMBOL",
-                    "name": "pathspec"
+                    "name": "path"
                   },
                   {
                     "type": "STRING",
@@ -345,48 +397,6 @@
           "name": "function_call"
         }
       ]
-    },
-    "eval_pathpart": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "$("
-        },
-        {
-          "type": "SYMBOL",
-          "name": "expr"
-        },
-        {
-          "type": "STRING",
-          "value": ")"
-        }
-      ]
-    },
-    "pathspec": {
-      "type": "REPEAT1",
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "STRING",
-            "value": "/"
-          },
-          {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "identifier"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "eval_pathpart"
-              }
-            ]
-          }
-        ]
-      }
     },
     "indexing": {
       "type": "PREC_LEFT",
@@ -910,8 +920,12 @@
           "value": "{"
         },
         {
-          "type": "SYMBOL",
-          "name": "function_block"
+          "type": "FIELD",
+          "name": "block",
+          "content": {
+            "type": "SYMBOL",
+            "name": "function_block"
+          }
         },
         {
           "type": "STRING",
@@ -919,105 +933,34 @@
         }
       ]
     },
-    "path_segment": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "identifier"
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "STRING",
-                "value": "("
-              },
-              {
-                "type": "FIELD",
-                "name": "path",
-                "content": {
-                  "type": "SYMBOL",
-                  "name": "identifier"
-                }
-              },
-              {
-                "type": "STRING",
-                "value": ")"
-              }
-            ]
-          },
-          "named": false,
-          "value": "globalPathSegment"
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "STRING",
-                "value": "{"
-              },
-              {
-                "type": "FIELD",
-                "name": "path",
-                "content": {
-                  "type": "SYMBOL",
-                  "name": "identifier"
-                }
-              },
-              {
-                "type": "STRING",
-                "value": "}"
-              }
-            ]
-          },
-          "named": false,
-          "value": "singlePathSegment"
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "STRING",
-                "value": "{"
-              },
-              {
-                "type": "FIELD",
-                "name": "path",
-                "content": {
-                  "type": "SYMBOL",
-                  "name": "identifier"
-                }
-              },
-              {
-                "type": "STRING",
-                "value": "=**}"
-              }
-            ]
-          },
-          "named": false,
-          "value": "multiPathSegment"
-        }
-      ]
+    "collection_path_seg": {
+      "type": "PATTERN",
+      "value": "\\/[a-zA-Z]+"
     },
-    "path": {
+    "single_path_seg": {
+      "type": "PATTERN",
+      "value": "\\/\\{[a-zA-Z]+\\}"
+    },
+    "multi_path_seg": {
+      "type": "PATTERN",
+      "value": "\\/\\{[a-zA-Z]+=\\*\\*\\}"
+    },
+    "match_path": {
       "type": "REPEAT1",
       "content": {
-        "type": "SEQ",
+        "type": "CHOICE",
         "members": [
           {
-            "type": "STRING",
-            "value": "/"
+            "type": "SYMBOL",
+            "name": "collection_path_seg"
           },
           {
             "type": "SYMBOL",
-            "name": "path_segment"
+            "name": "single_path_seg"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "multi_path_seg"
           }
         ]
       }
@@ -1055,7 +998,7 @@
         }
       ]
     },
-    "rule": {
+    "rule_def": {
       "type": "SEQ",
       "members": [
         {
@@ -1134,47 +1077,63 @@
           "name": "path",
           "content": {
             "type": "SYMBOL",
-            "name": "path"
+            "name": "match_path"
           }
         },
         {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "{"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "match_body"
-            },
-            {
-              "type": "STRING",
-              "value": "}"
-            }
-          ]
+          "type": "FIELD",
+          "name": "match_body",
+          "content": {
+            "type": "SYMBOL",
+            "name": "match_body"
+          }
         }
       ]
     },
     "match_body": {
-      "type": "REPEAT1",
-      "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "SYMBOL",
-            "name": "function_def"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "match_def"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "rule"
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "REPEAT1",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "FIELD",
+                "name": "function_def",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "function_def"
+                }
+              },
+              {
+                "type": "FIELD",
+                "name": "match_def",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "match_def"
+                }
+              },
+              {
+                "type": "FIELD",
+                "name": "rule_ed",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "rule_def"
+                }
+              }
+            ]
           }
-        ]
-      }
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
     }
   },
   "extras": [

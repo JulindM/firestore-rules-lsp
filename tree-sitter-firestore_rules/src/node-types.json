@@ -50,7 +50,7 @@
     }
   },
   {
-    "type": "eval_pathpart",
+    "type": "expr",
     "named": true,
     "fields": {},
     "children": {
@@ -58,15 +58,51 @@
       "required": true,
       "types": [
         {
-          "type": "expr",
+          "type": "addition",
+          "named": true
+        },
+        {
+          "type": "conditional_and",
+          "named": true
+        },
+        {
+          "type": "conditional_or",
+          "named": true
+        },
+        {
+          "type": "indexing",
+          "named": true
+        },
+        {
+          "type": "member",
+          "named": true
+        },
+        {
+          "type": "multiplication",
+          "named": true
+        },
+        {
+          "type": "primary",
+          "named": true
+        },
+        {
+          "type": "relation",
+          "named": true
+        },
+        {
+          "type": "ternary",
+          "named": true
+        },
+        {
+          "type": "unary",
           "named": true
         }
       ]
     }
   },
   {
-    "type": "expr",
-    "named": true,
+    "type": "exprPathPart",
+    "named": false,
     "fields": {},
     "children": {
       "multiple": false,
@@ -173,7 +209,7 @@
           "named": true
         },
         {
-          "type": "pathspec",
+          "type": "path",
           "named": true
         }
       ]
@@ -183,6 +219,16 @@
     "type": "function_def",
     "named": true,
     "fields": {
+      "block": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "function_block",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -207,16 +253,6 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "function_block",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -287,47 +323,83 @@
   {
     "type": "match_body",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "function_def",
-          "named": true
-        },
-        {
-          "type": "match_def",
-          "named": true
-        },
-        {
-          "type": "rule",
-          "named": true
-        }
-      ]
+    "fields": {
+      "function_def": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "function_def",
+            "named": true
+          }
+        ]
+      },
+      "match_def": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "match_def",
+            "named": true
+          }
+        ]
+      },
+      "rule_ed": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "rule_def",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
     "type": "match_def",
     "named": true,
     "fields": {
+      "match_body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "match_body",
+            "named": true
+          }
+        ]
+      },
       "path": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "path",
+            "type": "match_path",
             "named": true
           }
         ]
       }
-    },
+    }
+  },
+  {
+    "type": "match_path",
+    "named": true,
+    "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
-          "type": "match_body",
+          "type": "collection_path_seg",
+          "named": true
+        },
+        {
+          "type": "multi_path_seg",
+          "named": true
+        },
+        {
+          "type": "single_path_seg",
           "named": true
         }
       ]
@@ -415,48 +487,11 @@
         "required": false,
         "types": [
           {
-            "type": "globalPathSegment",
-            "named": false
-          },
-          {
-            "type": "multiPathSegment",
-            "named": false
-          },
-          {
-            "type": "singlePathSegment",
+            "type": "exprPathPart",
             "named": false
           }
         ]
       }
-    },
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "identifier",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "pathspec",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "eval_pathpart",
-          "named": true
-        },
-        {
-          "type": "identifier",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -530,7 +565,7 @@
     }
   },
   {
-    "type": "rule",
+    "type": "rule_def",
     "named": true,
     "fields": {
       "condition": {
@@ -564,15 +599,24 @@
     }
   },
   {
+    "type": "service_name",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "source_file",
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
           "type": "match_body",
+          "named": true
+        },
+        {
+          "type": "service_name",
           "named": true
         }
       ]
@@ -671,10 +715,6 @@
   },
   {
     "type": "\"",
-    "named": false
-  },
-  {
-    "type": "$(",
     "named": false
   },
   {
@@ -778,6 +818,10 @@
     "named": false
   },
   {
+    "type": "collection_path_seg",
+    "named": true
+  },
+  {
     "type": "comment",
     "named": true
   },
@@ -794,6 +838,10 @@
     "named": true
   },
   {
+    "type": "exprPathPart",
+    "named": false
+  },
+  {
     "type": "false",
     "named": false
   },
@@ -803,10 +851,6 @@
   },
   {
     "type": "get",
-    "named": false
-  },
-  {
-    "type": "globalPathSegment",
     "named": false
   },
   {
@@ -830,8 +874,8 @@
     "named": false
   },
   {
-    "type": "multiPathSegment",
-    "named": false
+    "type": "multi_path_seg",
+    "named": true
   },
   {
     "type": "null",
@@ -840,6 +884,10 @@
   {
     "type": "number",
     "named": true
+  },
+  {
+    "type": "pathPart",
+    "named": false
   },
   {
     "type": "read",
@@ -854,8 +902,8 @@
     "named": false
   },
   {
-    "type": "singlePathSegment",
-    "named": false
+    "type": "single_path_seg",
+    "named": true
   },
   {
     "type": "string_fragment",
