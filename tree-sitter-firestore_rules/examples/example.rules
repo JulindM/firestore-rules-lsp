@@ -26,7 +26,7 @@ service cloud.firestore {
     match /{path}/one {
       allow read;
       allow create: if true;
-      allow update: if var.field.method().again(val["hello"]); //comment here
+      allow upddate, get: if var.field.method().again(val["hello"]); //comment here
       allow update: if var.field.method().again(val["hello"]).field;
       allow delete: if var.indexable_field[3];
     }

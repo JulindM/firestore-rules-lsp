@@ -166,27 +166,28 @@ module.exports = grammar({
       repeat(seq(",", $.expr))
     ),
 
-    return: $ => seq("return", $.expr, ";"),
 
-    variable_assignment: $ => seq("let", $.variable, "=", $.expr, ";"),
+    variable_def: $ => seq("let", $.variable, "=", $.expr, ";"),
 
-    function_block: $ => seq(
-      repeat($.variable_assignment),
-      $.return,
+    function_body: $ => seq(
+      repeat($.variable_def),
+      "return",
+      alias($.expr, "ret_expr"),
+      ";",
     ),
 
     function_def: $ => seq(
       "function",
-      field("name", $.identifier),
+      alias($.identifier, "name"),
       "(",
-      field(
-        "param",
+      alias(
         optional(
           seq($.identifier, repeat(seq(",", $.identifier)))
         ),
+        "param",
       ),
       ")", "{",
-      field("block", $.function_block),
+      $.function_body,
       "}"
     ),
 
@@ -215,33 +216,30 @@ module.exports = grammar({
 
     rule_def: $ => seq(
       "allow",
-      field(
-        "rule",
-        seq(
-          $.method,
-          repeat(seq(",", $.method)),
-        ),
+      seq(
+        $.method,
+        repeat(seq(",", $.method)),
       ),
-      field(
+      alias(
+        optional(seq(": if", $.expr)),
         "condition",
-        optional(seq(": if", $.expr))
       ),
       ";"
     ),
 
     match_def: $ => seq(
       "match",
-      field("path", $.match_path),
-      field("match_body", $.match_body),
+      $.match_path,
+      $.match_body,
     ),
 
     match_body: $ => seq(
       "{",
       repeat1(
         choice(
-          field("function_def", $.function_def),
-          field("match_def", $.match_def),
-          field("rule_ed", $.rule_def),
+          $.function_def,
+          $.match_def,
+          $.rule_def,
         )
       ),
       "}"

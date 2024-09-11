@@ -1,6 +1,9 @@
 use tree_sitter::{Node, Tree};
 
-use crate::{FirestoreTree, Function, Match, MatchBody, MatchPath, MatchPathPart, Variable};
+use crate::{
+  Expr, FirestoreTree, Function, FunctionBody, Match, MatchBody, MatchPath, MatchPathPart, Method,
+  Rule, Variable, VariableDefintion,
+};
 
 use super::extensions::{ErrorNode, EvaluatedTree};
 
@@ -60,126 +63,224 @@ fn parse_match_body<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
 ) -> (MatchBody, Vec<ErrorNode<'tree>>) {
-  debug_entry("match_body", node);
+  let mut matches = vec![];
+  let mut functions = vec![];
+  let mut rules = vec![];
+  let mut level_errors = vec![];
 
-  let (matches, match_errors) = node
-    .children_by_field_name("match_def", &mut node.walk())
-    .map(|m_node| parse_match_def(m_node, source_bytes))
-    .fold((vec![], vec![]), |mut acc, mut val| {
-      acc.0.push(val.0);
-      acc.1.append(&mut val.1);
-      acc
+  node
+    .children(&mut node.walk())
+    .for_each(|child| match child.kind() {
+      "match_def" => {
+        let mut res = parse_match_def(child, source_bytes);
+        matches.push(res.0);
+        level_errors.append(&mut res.1);
+      }
+      "function_def" => {
+        let mut res = parse_function(child, source_bytes);
+        functions.push(res.0);
+        level_errors.append(&mut res.1);
+      }
+      "rule_def" => {
+        let mut res = parse_rule(child, source_bytes);
+        rules.push(res.0);
+        level_errors.append(&mut res.1);
+      }
+      _ if node.is_error() => level_errors.push(ErrorNode::new(node)),
+      _ => return,
     });
 
-  let (functions, function_errors) = node
-    .children_by_field_name("function_def", &mut node.walk())
-    .map(|f_node| parse_function(f_node, source_bytes))
-    .fold((vec![], vec![]), |mut acc, mut val| {
-      acc.0.push(val.0);
-      acc.1.append(&mut val.1);
-      acc
-    });
-
-  let errors = vec![match_errors, function_errors]
-    .into_iter()
-    .flatten()
-    .collect();
-
-  let root_match_body = MatchBody::new(functions, matches);
-
-  (root_match_body, errors)
+  (MatchBody::new(functions, matches, rules), level_errors)
 }
 
 fn parse_match_def<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
 ) -> (Match, Vec<ErrorNode<'tree>>) {
-  debug_entry("match_def", node);
-  let path;
+  let mut path = MatchPath::empty();
+  let mut body = MatchBody::empty();
+  let mut level_errors = vec![];
 
-  let path_node = node
-    .children_by_field_name("path", &mut node.walk())
-    .next()
-    .unwrap();
+  node
+    .children(&mut node.walk())
+    .for_each(|child| match child.kind() {
+      "match_path" => {
+        let mut res = parse_match_path(child, source_bytes);
 
-  path = parse_match_path(path_node, source_bytes);
+        path = res.0;
+        level_errors.append(&mut res.1);
+      }
+      "match_body" => {
+        let mut res = parse_match_body(child, source_bytes);
+        body = res.0;
+        level_errors.append(&mut res.1);
+      }
+      _ if node.is_error() => level_errors.push(ErrorNode::new(node)),
+      _ => return,
+    });
 
-  let match_node = node
-    .children_by_field_name("match_body", &mut node.walk())
-    .next()
-    .unwrap();
-
-  let (match_body, errors) = parse_match_body(match_node, source_bytes);
-
-  (Match::new(path, match_body), errors)
+  (Match::new(path, body), level_errors)
 }
 
 fn parse_function<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
 ) -> (Function, Vec<ErrorNode<'tree>>) {
-  debug_entry("function", node);
+  let mut name = "";
+  let mut parms = vec![];
+  let mut body = FunctionBody::empty();
+  let mut level_errors = vec![];
 
-  let name = node
-    .children_by_field_name("name", &mut node.walk())
-    .next()
-    .unwrap()
-    .utf8_text(source_bytes)
-    .unwrap();
-
-  let parameters = node
-    .children_by_field_name("param", &mut node.walk())
-    .map(|p_node| Variable::new(p_node.utf8_text(source_bytes).unwrap()))
-    .collect();
-
-  (Function::new(String::from(name), parameters), vec![])
-}
-
-fn parse_match_path<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> MatchPath {
-  debug_entry("path", node);
-
-  let mut path_parts = vec![];
   let mut cursor = node.walk();
 
-  cursor.goto_first_child();
+  node
+    .children(&mut cursor)
+    .for_each(|child| match child.kind() {
+      "name" => name = child.utf8_text(source_bytes).unwrap(),
+      "param" => parms.push(Variable::new(child.utf8_text(source_bytes).unwrap())),
+      _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+      //todo
+      "function_body" => {
+        let mut res = parse_function_body(child, source_bytes);
+        body = res.0;
+        level_errors.append(&mut res.1);
+      }
+      _ => return,
+    });
 
-  loop {
-    let curr_node = cursor.node();
+  (Function::new(name, parms, body), vec![])
+}
 
-    println!("{:#?}", curr_node.kind());
+fn parse_function_body<'tree>(
+  node: Node<'tree>,
+  source_bytes: &[u8],
+) -> (FunctionBody, Vec<ErrorNode<'tree>>) {
+  let mut variables = vec![];
+  let mut ret = Expr::new();
+  let mut level_errors = vec![];
 
-    match curr_node.kind() {
+  let mut cursor = node.walk();
+
+  node
+    .children(&mut cursor)
+    .for_each(|child| match child.kind() {
+      "variable_def" => {
+        let mut res = parse_variable_def(child, source_bytes);
+        variables.push(res.0);
+        level_errors.append(&mut res.1);
+      }
+      "ret_expr" => {
+        let mut res = parse_expr(child);
+        ret = res.0;
+        level_errors.append(&mut res.1);
+      }
+      _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+      _ => return,
+    });
+
+  (FunctionBody::new(variables, ret), level_errors)
+}
+
+fn parse_variable_def<'tree>(
+  node: Node<'tree>,
+  source_bytes: &[u8],
+) -> (VariableDefintion, Vec<ErrorNode<'tree>>) {
+  let mut name = "";
+  let mut expr = Expr::new();
+  let mut level_errors = vec![];
+
+  let mut cursor = node.walk();
+
+  node
+    .children(&mut cursor)
+    .for_each(|child| match child.kind() {
+      "variable" => name = child.utf8_text(source_bytes).unwrap(),
+      "ret_expr" => {
+        let mut res = parse_expr(child);
+        expr = res.0;
+        level_errors.append(&mut res.1);
+      }
+      _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+      _ => return,
+    });
+
+  (VariableDefintion::new(name, expr), level_errors)
+}
+
+fn parse_match_path<'tree>(
+  node: Node<'tree>,
+  source_bytes: &[u8],
+) -> (MatchPath, Vec<ErrorNode<'tree>>) {
+  let mut path_parts = vec![];
+  let mut level_errors = vec![];
+
+  node
+    .children(&mut node.walk())
+    .for_each(|child| match child.kind() {
       "collection_path_seg" => {
-        let name = curr_node.utf8_text(source_bytes).unwrap();
+        let name = child.utf8_text(source_bytes).unwrap();
         let part = MatchPathPart::Collection(name.to_owned());
         path_parts.push(part);
       }
       "single_path_seg" => {
-        let name = curr_node.utf8_text(source_bytes).unwrap();
+        let name = child.utf8_text(source_bytes).unwrap();
         let part = MatchPathPart::SinglePath(name.to_owned());
         path_parts.push(part);
       }
       "multi_path_seg" => {
-        let name = curr_node.utf8_text(source_bytes).unwrap();
+        let name = child.utf8_text(source_bytes).unwrap();
         let part = MatchPathPart::MultiPath(name.to_owned());
         path_parts.push(part);
       }
-      _ => continue,
-    }
+      _ if node.is_error() => level_errors.push(ErrorNode::new(node)),
+      _ => todo!(),
+    });
 
-    if !cursor.goto_next_sibling() {
-      break;
-    }
-  }
-
-  MatchPath::new(path_parts)
+  (MatchPath::new(path_parts), level_errors)
 }
 
-fn debug_entry<'a>(parser: &str, node: Node<'a>) {
-  println!(
-    "Entering {:?} node type {:#} at {:#}",
-    parser,
-    node.kind(),
-    node.start_position()
-  );
+fn parse_rule<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (Rule, Vec<ErrorNode<'tree>>) {
+  let mut methods = vec![];
+  let mut condition: Option<Expr> = None;
+  let mut level_errors = vec![];
+
+  node
+    .children(&mut node.walk())
+    .for_each(|child| match child.kind() {
+      "method" => match parse_method(child) {
+        Ok(meth) => methods.push(meth),
+        Err(err) => level_errors.push(err),
+      },
+      "condition" => {
+        let mut res = parse_expr(child);
+        condition = Some(res.0);
+        level_errors.append(&mut res.1);
+      }
+      _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+      _ => return,
+    });
+
+  (Rule::new(methods, condition), level_errors)
+}
+
+fn parse_expr<'tree>(condition: Node<'tree>) -> (Expr, Vec<ErrorNode>) {
+  //TODO
+  return (Expr::new(), vec![]);
+}
+
+fn parse_method<'tree>(m_node: Node<'tree>) -> Result<Method, ErrorNode> {
+  let mut cursor = m_node.walk();
+
+  cursor.goto_first_child();
+
+  match cursor.node().kind() {
+    "read" => Ok(Method::Read),
+    "write" => Ok(Method::Write),
+    "get" => Ok(Method::Get),
+    "list" => Ok(Method::List),
+    "create" => Ok(Method::Create),
+    "update" => Ok(Method::Update),
+    "delete" => Ok(Method::Delete),
+    _ => Err(ErrorNode::new(cursor.node())),
+  }
 }

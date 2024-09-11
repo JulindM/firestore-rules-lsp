@@ -13,11 +13,50 @@ impl FirestoreTree {
 pub struct Function {
   name: String,
   parameters: Vec<Variable>,
+  body: FunctionBody,
 }
 
 impl Function {
-  pub fn new(name: String, parameters: Vec<Variable>) -> Self {
-    Self { name, parameters }
+  pub fn new(name: &str, parameters: Vec<Variable>, body: FunctionBody) -> Self {
+    Self {
+      name: name.to_owned(),
+      parameters,
+      body,
+    }
+  }
+}
+
+#[derive(Debug)]
+pub struct FunctionBody {
+  variable_defs: Vec<VariableDefintion>,
+  ret: Expr,
+}
+
+impl FunctionBody {
+  pub fn new(variable_defs: Vec<VariableDefintion>, ret: Expr) -> Self {
+    Self { variable_defs, ret }
+  }
+
+  pub(crate) fn empty() -> FunctionBody {
+    Self {
+      variable_defs: vec![],
+      ret: Expr::new(),
+    }
+  }
+}
+
+#[derive(Debug)]
+pub struct VariableDefintion {
+  name: String,
+  definition: Expr,
+}
+
+impl VariableDefintion {
+  pub fn new(name: &str, definition: Expr) -> Self {
+    Self {
+      name: name.to_owned(),
+      definition,
+    }
   }
 }
 
@@ -79,17 +118,55 @@ impl Match {
 pub struct MatchBody {
   functions: Vec<Function>,
   matches: Vec<Match>,
+  rules: Vec<Rule>,
 }
 
 impl MatchBody {
-  pub fn new(functions: Vec<Function>, matches: Vec<Match>) -> Self {
-    Self { functions, matches }
+  pub fn new(functions: Vec<Function>, matches: Vec<Match>, rules: Vec<Rule>) -> Self {
+    Self {
+      functions,
+      matches,
+      rules,
+    }
   }
 
   pub(crate) fn empty() -> Self {
     Self {
       functions: vec![],
       matches: vec![],
+      rules: vec![],
     }
+  }
+}
+
+#[derive(Debug)]
+pub enum Method {
+  Read,
+  Write,
+  Get,
+  List,
+  Create,
+  Update,
+  Delete,
+}
+
+#[derive(Debug)]
+pub struct Rule {
+  methods: Vec<Method>,
+  condition: Option<Expr>,
+}
+
+impl Rule {
+  pub fn new(methods: Vec<Method>, condition: Option<Expr>) -> Self {
+    Self { methods, condition }
+  }
+}
+
+#[derive(Debug)]
+pub struct Expr {}
+
+impl Expr {
+  pub fn new() -> Self {
+    Self {}
   }
 }
