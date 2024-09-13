@@ -29,18 +29,18 @@ impl Function {
 #[derive(Debug)]
 pub struct FunctionBody {
   variable_defs: Vec<VariableDefintion>,
-  ret: Expr,
+  ret: Option<ExprNode>,
 }
 
 impl FunctionBody {
-  pub fn new(variable_defs: Vec<VariableDefintion>, ret: Expr) -> Self {
+  pub fn new(variable_defs: Vec<VariableDefintion>, ret: Option<ExprNode>) -> Self {
     Self { variable_defs, ret }
   }
 
   pub(crate) fn empty() -> FunctionBody {
     Self {
       variable_defs: vec![],
-      ret: Expr::new(),
+      ret: None,
     }
   }
 }
@@ -48,11 +48,11 @@ impl FunctionBody {
 #[derive(Debug)]
 pub struct VariableDefintion {
   name: String,
-  definition: Expr,
+  definition: Option<ExprNode>,
 }
 
 impl VariableDefintion {
-  pub fn new(name: &str, definition: Expr) -> Self {
+  pub fn new(name: &str, definition: Option<ExprNode>) -> Self {
     Self {
       name: name.to_owned(),
       definition,
@@ -153,20 +153,76 @@ pub enum Method {
 #[derive(Debug)]
 pub struct Rule {
   methods: Vec<Method>,
-  condition: Option<Expr>,
+  condition: Option<ExprNode>,
 }
 
 impl Rule {
-  pub fn new(methods: Vec<Method>, condition: Option<Expr>) -> Self {
+  pub fn new(methods: Vec<Method>, condition: Option<ExprNode>) -> Self {
     Self { methods, condition }
   }
 }
 
 #[derive(Debug)]
-pub struct Expr {}
+pub enum Operation {
+  Negation,
+  Addition,
+  Multiplication,
+  Division,
+  Relation,
+  And,
+  Or,
+  Substraction,
+  Modulo,
+}
 
-impl Expr {
-  pub fn new() -> Self {
-    Self {}
+#[derive(Debug)]
+pub enum PathSegment {
+  String(String),
+  EvalPath(ExprNode),
+}
+
+#[derive(Debug)]
+pub enum FunctionArgument {
+  Path(Vec<PathSegment>),
+  ExprList(Vec<ExprNode>),
+}
+
+#[derive(Debug)]
+pub enum Literal {
+  Number(f32),
+  Bool(bool),
+  Null,
+  String(String),
+}
+
+#[derive(Debug)]
+pub enum Expr {
+  Unary(Option<Operation>, Box<Option<ExprNode>>),
+  Binary(
+    Option<Operation>,
+    Box<Option<ExprNode>>,
+    Box<Option<ExprNode>>,
+  ),
+  Ternary(
+    Box<Option<ExprNode>>,
+    Box<Option<ExprNode>>,
+    Box<Option<ExprNode>>,
+  ),
+  Member(Box<Option<ExprNode>>, Box<Option<ExprNode>>),
+  Indexing(Box<Option<ExprNode>>, Box<Option<ExprNode>>),
+  FunctionCall(String, Option<FunctionArgument>),
+  Literal(Literal),
+  Variable(Variable),
+  String(String),
+}
+
+#[derive(Debug)]
+pub struct ExprNode {
+  expr: Expr,
+}
+
+impl ExprNode {
+  pub fn new(expr: Expr) -> Self {
+    Self { expr }
   }
 }

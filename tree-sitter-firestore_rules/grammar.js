@@ -24,14 +24,13 @@ module.exports = grammar({
 
     literal: $ => choice(
       $.number,
-      $.bool,
+      "true",
+      "false",
       $.null,
       $.string
     ),
 
-    number: _ => /\d+/,
-
-    bool: _ => choice("true", "false"),
+    number: _ => /\d+(\.\d+)?/,
 
     null: _ => "null",
 
@@ -63,8 +62,8 @@ module.exports = grammar({
     )),
 
     path_segment: $ => choice(
-      alias($.identifier, "pathPart"),
-      alias(seq("$(", field("path", $.expr), ")"), "exprPathPart"),
+      $.identifier,
+      seq("$(", field("path", $.expr), ")"),
     ),
 
     path: $ => repeat1(seq("/", $.path_segment)),
@@ -72,45 +71,51 @@ module.exports = grammar({
     function_call: $ => prec.left(
       1,
       seq(
-        field("name", $.identifier),
-        choice(
-          seq("(", $.path, ")"),
-          seq("(", optional($.expr_list), ")"),
-        )
+        $.identifier,
+        "(",
+        choice($.path, $.expr_list),
+        ")",
       )
     ),
 
     variable: $ => $.identifier,
 
+    expr_group: $ => seq("(", $.expr, ")"),
+
+    list: $ => seq("[", optional($.expr_list), "]"),
+
     primary: $ => choice(
       $.literal,
       $.variable,
-      seq("(", $.expr, ")"),
-      seq("[", optional($.expr_list), "]"),
+      $.expr_group,
+      $.list,
       $.function_call
     ),
 
     indexing: $ => prec.left(
       8,
       seq(
-        field("object", choice($.member, $.primary)),
-        field("index", seq("[", $.expr, "]"))
-      ),
+        choice($.member, $.primary),
+        "[",
+        $.expr,
+        "]",
+      )
     ),
 
     member: $ => prec.left(
       8,
       seq(
-        field("object", seq(choice($.member, $.primary), ".")),
-        field("field", choice($.variable, $.function_call)),
+        choice($.member, $.primary),
+        ".",
+        choice($.variable, $.function_call),
       ),
     ),
 
     unary: $ => prec.right(
       7,
       choice(
-        seq(repeat1("!"), $.expr),
-        seq(repeat1("-"), $.expr),
+        seq(alias(repeat1("!"), "negation"), $.expr),
+        seq(alias(repeat1("-"), "substraction"), $.expr),
       ),
     ),
 
@@ -171,9 +176,7 @@ module.exports = grammar({
 
     function_body: $ => seq(
       repeat($.variable_def),
-      "return",
-      alias($.expr, "ret_expr"),
-      ";",
+      "return", $.expr, ";",
     ),
 
     function_def: $ => seq(
@@ -220,10 +223,8 @@ module.exports = grammar({
         $.method,
         repeat(seq(",", $.method)),
       ),
-      alias(
-        optional(seq(": if", $.expr)),
-        "condition",
-      ),
+      ": if",
+      $.expr,
       ";"
     ),
 
