@@ -86,7 +86,7 @@ module.exports = grammar({
 
     primary: $ => choice(
       $.literal,
-      $.variable,
+      $.identifier,
       $.expr_group,
       $.list,
       $.function_call

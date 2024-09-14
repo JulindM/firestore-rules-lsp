@@ -433,15 +433,15 @@
           "named": true
         },
         {
+          "type": "identifier",
+          "named": true
+        },
+        {
           "type": "list",
           "named": true
         },
         {
           "type": "literal",
-          "named": true
-        },
-        {
-          "type": "variable",
           "named": true
         }
       ]

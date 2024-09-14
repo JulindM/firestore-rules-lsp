@@ -16,7 +16,7 @@ const ROOT_MATCH: &str = "match_body";
 pub fn evaluate_tree<'tree>(
   tree: &'tree Tree,
   source_bytes: &[u8],
-) -> Result<EvaluatedTree<'tree>, String> {
+) -> Result<EvaluatedTree, String> {
   let source_node = tree.root_node();
 
   if source_node.kind() != "source_file" {
@@ -30,7 +30,7 @@ pub fn evaluate_tree<'tree>(
   let mut curr_kind = curr_node.kind();
 
   if curr_kind != SERVICE_NAME {
-    return Ok(gen_empty_tree(&curr_node));
+    return Ok(gen_empty_tree(&curr_node, source_bytes));
   }
 
   cursor.goto_next_sibling();
@@ -38,7 +38,7 @@ pub fn evaluate_tree<'tree>(
   curr_kind = curr_node.kind();
 
   if curr_kind != ROOT_MATCH {
-    return Ok(gen_empty_tree(&curr_node));
+    return Ok(gen_empty_tree(&curr_node, source_bytes));
   }
 
   cursor.goto_next_sibling();
@@ -46,7 +46,7 @@ pub fn evaluate_tree<'tree>(
   curr_kind = curr_node.kind();
 
   if curr_kind != ROOT_MATCH {
-    return Ok(gen_empty_tree(&curr_node));
+    return Ok(gen_empty_tree(&curr_node, source_bytes));
   }
 
   let (root_match, errors) = parse_match_body(curr_node, source_bytes);
@@ -55,17 +55,14 @@ pub fn evaluate_tree<'tree>(
   return Ok(EvaluatedTree::new(tree, errors));
 }
 
-fn gen_empty_tree<'tree>(service_node: &Node<'tree>) -> EvaluatedTree<'tree> {
-  let err = ErrorNode::new(*service_node);
-  let empty_tree = FirestoreTree::new(MatchBody::empty());
+fn gen_empty_tree<'tree>(node: &Node<'tree>, source_bytes: &[u8]) -> EvaluatedTree {
+  let err = ErrorNode::new(*node, source_bytes);
+  let empty_tree = FirestoreTree::new(MatchBody::empty(*node));
 
   return EvaluatedTree::new(empty_tree, vec![err]);
 }
 
-fn parse_match_body<'tree>(
-  node: Node<'tree>,
-  source_bytes: &[u8],
-) -> (MatchBody, Vec<ErrorNode<'tree>>) {
+fn parse_match_body<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (MatchBody, Vec<ErrorNode>) {
   let mut matches = vec![];
   let mut functions = vec![];
   let mut rules = vec![];
@@ -89,19 +86,19 @@ fn parse_match_body<'tree>(
         rules.push(res.0);
         level_errors.append(&mut res.1);
       }
-      _ if node.is_error() => level_errors.push(ErrorNode::new(node)),
+      _ if node.is_error() => level_errors.push(ErrorNode::new(node, source_bytes)),
       _ => return,
     });
 
-  (MatchBody::new(functions, matches, rules), level_errors)
+  (
+    MatchBody::new(functions, matches, rules, node),
+    level_errors,
+  )
 }
 
-fn parse_match_def<'tree>(
-  node: Node<'tree>,
-  source_bytes: &[u8],
-) -> (Match, Vec<ErrorNode<'tree>>) {
-  let mut path = MatchPath::empty();
-  let mut body = MatchBody::empty();
+fn parse_match_def<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (Match, Vec<ErrorNode>) {
+  let mut path = MatchPath::empty(node);
+  let mut body = MatchBody::empty(node);
   let mut level_errors = vec![];
 
   node
@@ -118,17 +115,14 @@ fn parse_match_def<'tree>(
         body = res.0;
         level_errors.append(&mut res.1);
       }
-      _ if node.is_error() => level_errors.push(ErrorNode::new(node)),
+      _ if node.is_error() => level_errors.push(ErrorNode::new(node, source_bytes)),
       _ => return,
     });
 
-  (Match::new(path, body), level_errors)
+  (Match::new(path, body, node), level_errors)
 }
 
-fn parse_function<'tree>(
-  node: Node<'tree>,
-  source_bytes: &[u8],
-) -> (Function, Vec<ErrorNode<'tree>>) {
+fn parse_function<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (Function, Vec<ErrorNode>) {
   let mut name = "";
   let mut parms = vec![];
   let mut body = FunctionBody::empty();
@@ -139,24 +133,25 @@ fn parse_function<'tree>(
   node
     .children(&mut cursor)
     .for_each(|child| match child.kind() {
+      _ if child.is_missing() => level_errors.push(ErrorNode::new(child, source_bytes)),
       "name" => name = child.utf8_text(source_bytes).unwrap(),
-      "param" => parms.push(Variable::new(child.utf8_text(source_bytes).unwrap())),
+      "param" => parms.push(Variable::new(child.utf8_text(source_bytes).unwrap(), child)),
       "function_body" => {
         let mut res = parse_function_body(child, source_bytes);
         body = res.0;
         level_errors.append(&mut res.1);
       }
-      _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+      _ if child.is_error() => level_errors.push(ErrorNode::new(child, source_bytes)),
       _ => return,
     });
 
-  (Function::new(name, parms, body), vec![])
+  (Function::new(name, parms, body, node), vec![])
 }
 
 fn parse_function_body<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
-) -> (FunctionBody, Vec<ErrorNode<'tree>>) {
+) -> (FunctionBody, Vec<ErrorNode>) {
   let mut variables = vec![];
   let mut ret = None;
   let mut level_errors = vec![];
@@ -166,6 +161,7 @@ fn parse_function_body<'tree>(
   node
     .children(&mut cursor)
     .for_each(|child| match child.kind() {
+      _ if child.is_missing() => level_errors.push(ErrorNode::new(child, source_bytes)),
       "variable_def" => {
         let mut res = parse_variable_def(child, source_bytes);
         variables.push(res.0);
@@ -176,17 +172,17 @@ fn parse_function_body<'tree>(
         ret = res.0;
         level_errors.append(&mut res.1);
       }
-      _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+      _ if child.is_error() => level_errors.push(ErrorNode::new(child, source_bytes)),
       _ => return,
     });
 
-  (FunctionBody::new(variables, ret), level_errors)
+  (FunctionBody::new(variables, ret, node), level_errors)
 }
 
 fn parse_variable_def<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
-) -> (VariableDefintion, Vec<ErrorNode<'tree>>) {
+) -> (VariableDefintion, Vec<ErrorNode>) {
   let mut name = "";
   let mut expr = None;
   let mut level_errors = vec![];
@@ -196,23 +192,21 @@ fn parse_variable_def<'tree>(
   node
     .children(&mut cursor)
     .for_each(|child| match child.kind() {
+      _ if child.is_missing() => level_errors.push(ErrorNode::new(child, source_bytes)),
       "variable" => name = child.utf8_text(source_bytes).unwrap(),
       "expr" => {
         let mut res = parse_expr(child, source_bytes);
         expr = res.0;
         level_errors.append(&mut res.1);
       }
-      _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+      _ if child.is_error() => level_errors.push(ErrorNode::new(child, source_bytes)),
       _ => return,
     });
 
-  (VariableDefintion::new(name, expr), level_errors)
+  (VariableDefintion::new(name, expr, node), level_errors)
 }
 
-fn parse_match_path<'tree>(
-  node: Node<'tree>,
-  source_bytes: &[u8],
-) -> (MatchPath, Vec<ErrorNode<'tree>>) {
+fn parse_match_path<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (MatchPath, Vec<ErrorNode>) {
   let mut path_parts = vec![];
   let mut level_errors = vec![];
 
@@ -234,14 +228,14 @@ fn parse_match_path<'tree>(
         let part = MatchPathPart::MultiPath(name.to_owned());
         path_parts.push(part);
       }
-      _ if node.is_error() => level_errors.push(ErrorNode::new(node)),
-      _ => level_errors.push(ErrorNode::new(node)),
+      _ if node.is_error() => level_errors.push(ErrorNode::new(node, source_bytes)),
+      _ => level_errors.push(ErrorNode::new(node, source_bytes)),
     });
 
-  (MatchPath::new(path_parts), level_errors)
+  (MatchPath::new(path_parts, node), level_errors)
 }
 
-fn parse_rule<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (Rule, Vec<ErrorNode<'tree>>) {
+fn parse_rule<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (Rule, Vec<ErrorNode>) {
   let mut methods = vec![];
   let mut condition: Option<ExprNode> = None;
   let mut level_errors = vec![];
@@ -249,7 +243,8 @@ fn parse_rule<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (Rule, Vec<Error
   node
     .children(&mut node.walk())
     .for_each(|child| match child.kind() {
-      "method" => match parse_method(child) {
+      _ if child.is_missing() => level_errors.push(ErrorNode::new(child, source_bytes)),
+      "method" => match parse_method(child, source_bytes) {
         Ok(meth) => methods.push(meth),
         Err(err) => level_errors.push(err),
       },
@@ -258,20 +253,21 @@ fn parse_rule<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (Rule, Vec<Error
         condition = res.0;
         level_errors.append(&mut res.1);
       }
-      _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+      _ if child.is_error() => level_errors.push(ErrorNode::new(child, source_bytes)),
       _ => return,
     });
 
-  (Rule::new(methods, condition), level_errors)
+  (Rule::new(methods, condition, node), level_errors)
 }
 
 fn parse_primary<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
-) -> (Option<ExprNode>, Vec<ErrorNode<'tree>>) {
+) -> (Option<ExprNode>, Vec<ErrorNode>) {
   let child = node.child(0).unwrap();
 
   match child.kind() {
+    _ if child.is_missing() => (None, vec![ErrorNode::new(child, source_bytes)]),
     "literal" => parse_literal(child, source_bytes),
     "variable" => parse_variable(child, source_bytes),
     "expr_group" => parse_expr(child.child(1).unwrap(), source_bytes),
@@ -283,7 +279,7 @@ fn parse_primary<'tree>(
         Some(node) => parse_expr(node, source_bytes),
       }
     }
-    _ if child.is_error() => (None, vec![ErrorNode::new(child)]),
+    _ if child.is_error() => (None, vec![ErrorNode::new(child, source_bytes)]),
     _ => (None, vec![]),
   }
 }
@@ -291,7 +287,7 @@ fn parse_primary<'tree>(
 fn parse_function_call<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
-) -> (Option<ExprNode>, Vec<ErrorNode<'tree>>) {
+) -> (Option<ExprNode>, Vec<ErrorNode>) {
   let name = node.child(0).unwrap().utf8_text(source_bytes).unwrap();
   let mut level_errors = vec![];
 
@@ -300,6 +296,7 @@ fn parse_function_call<'tree>(
   node
     .children(&mut node.walk())
     .for_each(|child| match child.kind() {
+      _ if child.is_missing() => level_errors.push(ErrorNode::new(child, source_bytes)),
       "expr_list" => {
         let mut res = parse_expr_list(child, source_bytes);
         arg = Some(FunctionArgument::ExprList(res.0));
@@ -310,20 +307,20 @@ fn parse_function_call<'tree>(
         arg = Some(FunctionArgument::Path(res.0));
         level_errors.append(&mut res.1);
       }
-      _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+      _ if child.is_error() => level_errors.push(ErrorNode::new(child, source_bytes)),
       _ => return,
     });
 
   (
-    Some(ExprNode::new(Expr::FunctionCall(name.to_owned(), arg))),
+    Some(ExprNode::new(
+      Expr::FunctionCall(name.to_owned(), arg),
+      node,
+    )),
     level_errors,
   )
 }
 
-fn parse_path<'tree>(
-  node: Node<'tree>,
-  source_bytes: &[u8],
-) -> (Vec<PathSegment>, Vec<ErrorNode<'tree>>) {
+fn parse_path<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (Vec<PathSegment>, Vec<ErrorNode>) {
   let mut path_segments = vec![];
   let mut level_errors = vec![];
 
@@ -332,12 +329,12 @@ fn parse_path<'tree>(
   node
     .children(&mut cursor)
     .for_each(|child| match child.kind() {
+      _ if child.is_missing() => level_errors.push(ErrorNode::new(child, source_bytes)),
       "path_segment" => {
-        let mut c_cursor = child.walk();
-
         child
-          .children(&mut c_cursor)
+          .children(&mut child.walk())
           .for_each(|child| match child.kind() {
+            _ if child.is_missing() => level_errors.push(ErrorNode::new(child, source_bytes)),
             "identifier" => {
               let name = child.utf8_text(source_bytes).unwrap();
               path_segments.push(PathSegment::String(name.to_owned()))
@@ -347,11 +344,11 @@ fn parse_path<'tree>(
               path_segments.push(PathSegment::EvalPath(expr.0));
               level_errors.append(&mut expr.1);
             }
-            _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+            _ if child.is_error() => level_errors.push(ErrorNode::new(child, source_bytes)),
             _ => return,
           });
       }
-      _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+      _ if child.is_error() => level_errors.push(ErrorNode::new(child, source_bytes)),
       _ => return,
     });
 
@@ -361,7 +358,7 @@ fn parse_path<'tree>(
 fn parse_expr_list<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
-) -> (Vec<ExprNode>, Vec<ErrorNode<'tree>>) {
+) -> (Vec<ExprNode>, Vec<ErrorNode>) {
   let mut expr_nodes = vec![];
   let mut level_errors = vec![];
 
@@ -376,7 +373,7 @@ fn parse_expr_list<'tree>(
         level_errors.append(&mut res.1);
       }
       "," => return,
-      _ => level_errors.push(ErrorNode::new(child)),
+      _ => level_errors.push(ErrorNode::new(child, source_bytes)),
     });
 
   (expr_nodes, level_errors)
@@ -385,10 +382,11 @@ fn parse_expr_list<'tree>(
 fn parse_literal<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
-) -> (Option<ExprNode>, Vec<ErrorNode<'tree>>) {
+) -> (Option<ExprNode>, Vec<ErrorNode>) {
   let child = node.child(0).unwrap();
 
   let literal = match child.kind() {
+    _ if child.is_missing() => return (None, vec![ErrorNode::new(child, source_bytes)]),
     "number" => Literal::Number(
       child
         .utf8_text(source_bytes)
@@ -400,32 +398,32 @@ fn parse_literal<'tree>(
     "false" => Literal::Bool(false),
     "null" => Literal::Null,
     "string" => Literal::String(child.utf8_text(source_bytes).unwrap().to_owned()),
-    _ if child.is_error() => return (None, vec![ErrorNode::new(child)]),
+    _ if child.is_error() => return (None, vec![ErrorNode::new(child, source_bytes)]),
     _ => return (None, vec![]),
   };
 
-  (Some(ExprNode::new(Expr::Literal(literal))), vec![])
+  (Some(ExprNode::new(Expr::Literal(literal), node)), vec![])
 }
 
 fn parse_variable<'tree>(
-  child: Node<'tree>,
+  node: Node<'tree>,
   source_bytes: &[u8],
-) -> (Option<ExprNode>, Vec<ErrorNode<'tree>>) {
-  let name = child.utf8_text(source_bytes).unwrap();
-  let variable = Variable::new(name);
+) -> (Option<ExprNode>, Vec<ErrorNode>) {
+  let name = node.utf8_text(source_bytes).unwrap();
+  let variable = Variable::new(name, node);
 
-  (Some(ExprNode::new(Expr::Variable(variable))), vec![])
+  (Some(ExprNode::new(Expr::Variable(variable), node)), vec![])
 }
 
 fn parse_indexing<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
-) -> (Option<ExprNode>, Vec<ErrorNode<'tree>>) {
+) -> (Option<ExprNode>, Vec<ErrorNode>) {
   let mut cursor = node.walk();
   let children = node.children(&mut cursor);
 
   if children.len() != 4 {
-    return (None, vec![ErrorNode::new(node)]);
+    return (None, vec![ErrorNode::new(node, source_bytes)]);
   }
 
   let object;
@@ -442,19 +440,17 @@ fn parse_indexing<'tree>(
     .flatten()
     .collect();
 
-  (Some(ExprNode::new(expr)), level_errors)
+  (Some(ExprNode::new(expr, node)), level_errors)
 }
 
-fn parse_expr<'tree>(
-  node: Node<'tree>,
-  source_bytes: &[u8],
-) -> (Option<ExprNode>, Vec<ErrorNode<'tree>>) {
+fn parse_expr<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (Option<ExprNode>, Vec<ErrorNode>) {
   let child = match node.kind() {
     "expr" => node.child(0).unwrap(),
     _ => node,
   };
 
   return match child.kind() {
+    _ if child.is_missing() => (None, vec![ErrorNode::new(child, source_bytes)]),
     "ternary" => parse_ternary(child, source_bytes),
     "conditional_or" | "conditional_and" | "relation" | "addition" | "multiplication" => {
       parse_binary(child, source_bytes)
@@ -465,7 +461,7 @@ fn parse_expr<'tree>(
     "primary" => parse_primary(child, source_bytes),
     "function_call" => parse_function_call(child, source_bytes),
     "variable" => parse_variable(child, source_bytes),
-    _ if child.is_error() => (None, vec![ErrorNode::new(child)]),
+    _ if child.is_error() => (None, vec![ErrorNode::new(child, source_bytes)]),
     _ => (None, vec![]),
   };
 }
@@ -473,12 +469,12 @@ fn parse_expr<'tree>(
 fn parse_member<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
-) -> (Option<ExprNode>, Vec<ErrorNode<'tree>>) {
+) -> (Option<ExprNode>, Vec<ErrorNode>) {
   let mut cursor = node.walk();
   let children = node.children(&mut cursor);
 
   if children.len() != 3 {
-    return (None, vec![ErrorNode::new(node)]);
+    return (None, vec![ErrorNode::new(node, source_bytes)]);
   }
 
   let object;
@@ -495,18 +491,18 @@ fn parse_member<'tree>(
     .flatten()
     .collect();
 
-  (Some(ExprNode::new(expr)), level_errors)
+  (Some(ExprNode::new(expr, node)), level_errors)
 }
 
 fn parse_ternary<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
-) -> (Option<ExprNode>, Vec<ErrorNode<'tree>>) {
+) -> (Option<ExprNode>, Vec<ErrorNode>) {
   let mut cursor = node.walk();
   let children = node.children(&mut cursor);
 
   if children.len() != 5 {
-    return (None, vec![ErrorNode::new(node)]);
+    return (None, vec![ErrorNode::new(node, source_bytes)]);
   }
 
   let condition;
@@ -529,18 +525,18 @@ fn parse_ternary<'tree>(
     .flatten()
     .collect();
 
-  (Some(ExprNode::new(expr)), level_errors)
+  (Some(ExprNode::new(expr, node)), level_errors)
 }
 
 fn parse_binary<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
-) -> (Option<ExprNode>, Vec<ErrorNode<'tree>>) {
+) -> (Option<ExprNode>, Vec<ErrorNode>) {
   let mut cursor = node.walk();
   let children = node.children(&mut cursor);
 
   if children.len() != 3 {
-    return (None, vec![ErrorNode::new(node)]);
+    return (None, vec![ErrorNode::new(node, source_bytes)]);
   }
 
   let operator1;
@@ -563,7 +559,7 @@ fn parse_binary<'tree>(
     "%" => Some(Operation::Modulo),
     "<" | "<=" | ">=" | ">" | "==" | "!=" | "in" => Some(Operation::Relation),
     _ => {
-      level_errors.push(ErrorNode::new(op_node));
+      level_errors.push(ErrorNode::new(op_node, source_bytes));
       None
     }
   };
@@ -575,18 +571,18 @@ fn parse_binary<'tree>(
     .flatten()
     .collect();
 
-  (Some(ExprNode::new(expr)), level_errors)
+  (Some(ExprNode::new(expr, node)), level_errors)
 }
 
 fn parse_unary<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
-) -> (Option<ExprNode>, Vec<ErrorNode<'tree>>) {
+) -> (Option<ExprNode>, Vec<ErrorNode>) {
   let mut cursor = node.walk();
   let children = node.children(&mut cursor);
 
   if children.len() != 2 {
-    return (None, vec![ErrorNode::new(node)]);
+    return (None, vec![ErrorNode::new(node, source_bytes)]);
   }
 
   let operation;
@@ -602,7 +598,7 @@ fn parse_unary<'tree>(
     "substraction" => Some(Operation::Substraction),
     "&&" => Some(Operation::And),
     _ => {
-      level_errors.push(ErrorNode::new(op_node));
+      level_errors.push(ErrorNode::new(op_node, source_bytes));
       None
     }
   };
@@ -611,10 +607,10 @@ fn parse_unary<'tree>(
 
   level_errors = [level_errors, operator.1].into_iter().flatten().collect();
 
-  (Some(ExprNode::new(expr)), level_errors)
+  (Some(ExprNode::new(expr, node)), level_errors)
 }
 
-fn parse_method<'tree>(m_node: Node<'tree>) -> Result<Method, ErrorNode> {
+fn parse_method<'tree>(m_node: Node<'tree>, source_bytes: &[u8]) -> Result<Method, ErrorNode> {
   let mut cursor = m_node.walk();
 
   cursor.goto_first_child();
@@ -627,6 +623,6 @@ fn parse_method<'tree>(m_node: Node<'tree>) -> Result<Method, ErrorNode> {
     "create" => Ok(Method::Create),
     "update" => Ok(Method::Update),
     "delete" => Ok(Method::Delete),
-    _ => Err(ErrorNode::new(cursor.node())),
+    _ => Err(ErrorNode::new(cursor.node(), source_bytes)),
   }
 }

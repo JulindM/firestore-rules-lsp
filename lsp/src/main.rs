@@ -30,6 +30,7 @@ pub fn main() {
     .expect("Error loading FirestoreRules parser");
 
   let tree = parser.parse(contents.clone(), None).unwrap();
+  let eval_tree = evaluate_tree(&tree, &contents).unwrap();
 
-  print!("\n\ndone with:\n{:#?}", evaluate_tree(&tree, &contents));
+  print!("\n\ndone with:\n{:#?}", eval_tree.error_nodes());
 }

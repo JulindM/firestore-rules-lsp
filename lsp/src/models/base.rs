@@ -1,3 +1,5 @@
+use tree_sitter::{Node, Point};
+
 #[derive(Debug)]
 pub struct FirestoreTree {
   body: MatchBody,
@@ -14,14 +16,18 @@ pub struct Function {
   name: String,
   parameters: Vec<Variable>,
   body: FunctionBody,
+  start: Point,
+  end: Point,
 }
 
 impl Function {
-  pub fn new(name: &str, parameters: Vec<Variable>, body: FunctionBody) -> Self {
+  pub fn new(name: &str, parameters: Vec<Variable>, body: FunctionBody, node: Node) -> Self {
     Self {
       name: name.to_owned(),
       parameters,
       body,
+      start: node.start_position(),
+      end: node.end_position(),
     }
   }
 }
@@ -30,17 +36,26 @@ impl Function {
 pub struct FunctionBody {
   variable_defs: Vec<VariableDefintion>,
   ret: Option<ExprNode>,
+  start: Option<Point>,
+  end: Option<Point>,
 }
 
 impl FunctionBody {
-  pub fn new(variable_defs: Vec<VariableDefintion>, ret: Option<ExprNode>) -> Self {
-    Self { variable_defs, ret }
+  pub fn new(variable_defs: Vec<VariableDefintion>, ret: Option<ExprNode>, node: Node) -> Self {
+    Self {
+      variable_defs,
+      ret,
+      start: Some(node.start_position()),
+      end: Some(node.end_position()),
+    }
   }
 
   pub(crate) fn empty() -> FunctionBody {
     Self {
       variable_defs: vec![],
       ret: None,
+      start: None,
+      end: None,
     }
   }
 }
@@ -49,13 +64,17 @@ impl FunctionBody {
 pub struct VariableDefintion {
   name: String,
   definition: Option<ExprNode>,
+  start: Point,
+  end: Point,
 }
 
 impl VariableDefintion {
-  pub fn new(name: &str, definition: Option<ExprNode>) -> Self {
+  pub fn new(name: &str, definition: Option<ExprNode>, node: Node) -> Self {
     Self {
       name: name.to_owned(),
       definition,
+      start: node.start_position(),
+      end: node.end_position(),
     }
   }
 }
@@ -63,12 +82,16 @@ impl VariableDefintion {
 #[derive(Debug)]
 pub struct Variable {
   name: String,
+  start: Point,
+  end: Point,
 }
 
 impl Variable {
-  pub fn new(name: &str) -> Self {
+  pub fn new(name: &str, node: Node) -> Self {
     Self {
       name: String::from(name),
+      start: node.start_position(),
+      end: node.end_position(),
     }
   }
 }
@@ -83,15 +106,25 @@ pub enum MatchPathPart {
 #[derive(Debug)]
 pub struct MatchPath {
   path_parts: Vec<MatchPathPart>,
+  start: Point,
+  end: Point,
 }
 
 impl MatchPath {
-  pub fn new(path_parts: Vec<MatchPathPart>) -> Self {
-    Self { path_parts }
+  pub fn new(path_parts: Vec<MatchPathPart>, node: Node) -> Self {
+    Self {
+      path_parts,
+      start: node.start_position(),
+      end: node.end_position(),
+    }
   }
 
-  pub(crate) fn empty() -> Self {
-    Self { path_parts: vec![] }
+  pub(crate) fn empty(node: Node) -> Self {
+    Self {
+      path_parts: vec![],
+      start: node.start_position(),
+      end: node.end_position(),
+    }
   }
 }
 
@@ -99,17 +132,26 @@ impl MatchPath {
 pub struct Match {
   path: MatchPath,
   body: MatchBody,
+  start: Point,
+  end: Point,
 }
 
 impl Match {
-  pub fn new(path: MatchPath, body: MatchBody) -> Self {
-    Self { path, body }
+  pub fn new(path: MatchPath, body: MatchBody, node: Node) -> Self {
+    Self {
+      path,
+      body,
+      start: node.start_position(),
+      end: node.end_position(),
+    }
   }
 
-  pub(crate) fn empty() -> Self {
+  pub(crate) fn empty(node: Node) -> Self {
     Self {
-      path: MatchPath::empty(),
-      body: MatchBody::empty(),
+      path: MatchPath::empty(node),
+      body: MatchBody::empty(node),
+      start: node.start_position(),
+      end: node.end_position(),
     }
   }
 }
@@ -119,22 +161,28 @@ pub struct MatchBody {
   functions: Vec<Function>,
   matches: Vec<Match>,
   rules: Vec<Rule>,
+  start: Point,
+  end: Point,
 }
 
 impl MatchBody {
-  pub fn new(functions: Vec<Function>, matches: Vec<Match>, rules: Vec<Rule>) -> Self {
+  pub fn new(functions: Vec<Function>, matches: Vec<Match>, rules: Vec<Rule>, node: Node) -> Self {
     Self {
       functions,
       matches,
       rules,
+      start: node.start_position(),
+      end: node.end_position(),
     }
   }
 
-  pub(crate) fn empty() -> Self {
+  pub(crate) fn empty(node: Node) -> Self {
     Self {
       functions: vec![],
       matches: vec![],
       rules: vec![],
+      start: node.start_position(),
+      end: node.end_position(),
     }
   }
 }
@@ -154,11 +202,18 @@ pub enum Method {
 pub struct Rule {
   methods: Vec<Method>,
   condition: Option<ExprNode>,
+  start: Point,
+  end: Point,
 }
 
 impl Rule {
-  pub fn new(methods: Vec<Method>, condition: Option<ExprNode>) -> Self {
-    Self { methods, condition }
+  pub fn new(methods: Vec<Method>, condition: Option<ExprNode>, node: Node) -> Self {
+    Self {
+      methods,
+      condition,
+      start: node.start_position(),
+      end: node.end_position(),
+    }
   }
 }
 
@@ -218,10 +273,16 @@ pub enum Expr {
 #[derive(Debug)]
 pub struct ExprNode {
   expr: Expr,
+  start: Point,
+  end: Point,
 }
 
 impl ExprNode {
-  pub fn new(expr: Expr) -> Self {
-    Self { expr }
+  pub fn new(expr: Expr, node: Node) -> Self {
+    Self {
+      expr,
+      start: node.start_position(),
+      end: node.end_position(),
+    }
   }
 }
