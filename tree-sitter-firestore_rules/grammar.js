@@ -72,8 +72,8 @@ module.exports = grammar({
       1,
       seq(
         $.identifier,
-        "(",
-        choice($.path, $.expr_list),
+        token.immediate("("),
+        optional(choice($.path, $.expr_list)),
         ")",
       )
     ),
@@ -223,8 +223,13 @@ module.exports = grammar({
         $.method,
         repeat(seq(",", $.method)),
       ),
-      ": if",
-      $.expr,
+      optional(
+        seq(
+          ":",
+          "if",
+          $.expr,
+        ),
+      ),
       ";"
     ),
 

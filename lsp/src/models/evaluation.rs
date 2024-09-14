@@ -4,7 +4,8 @@ use tree_sitter::{Node, Tree};
 
 use crate::{
   Expr, ExprNode, FirestoreTree, Function, FunctionArgument, FunctionBody, Literal, Match,
-  MatchBody, MatchPath, MatchPathPart, Method, Operation, Rule, Variable, VariableDefintion,
+  MatchBody, MatchPath, MatchPathPart, Method, Operation, PathSegment, Rule, Variable,
+  VariableDefintion,
 };
 
 use super::extensions::{ErrorNode, EvaluatedTree};
@@ -291,35 +292,70 @@ fn parse_function_call<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
 ) -> (Option<ExprNode>, Vec<ErrorNode<'tree>>) {
-  if node.child_count() != 4 {
-    return (None, vec![ErrorNode::new(node)]);
-  }
-
+  let name = node.child(0).unwrap().utf8_text(source_bytes).unwrap();
   let mut level_errors = vec![];
 
-  let name = node.child(0).unwrap().utf8_text(source_bytes).unwrap();
-
   let mut arg = None;
-  let arg_node = node.child(2);
 
-  match arg_node {
-    Some(node) => match node.kind() {
+  node
+    .children(&mut node.walk())
+    .for_each(|child| match child.kind() {
       "expr_list" => {
-        let res = parse_expr_list(node, source_bytes);
+        let mut res = parse_expr_list(child, source_bytes);
         arg = Some(FunctionArgument::ExprList(res.0));
-        level_errors = res.1;
+        level_errors.append(&mut res.1);
       }
-      // TODO
-      "path" => arg = None,
-      _ => level_errors = vec![ErrorNode::new(arg_node.unwrap())],
-    },
-    None => level_errors = vec![ErrorNode::new(arg_node.unwrap())],
-  };
+      "path" => {
+        let mut res = parse_path(child, source_bytes);
+        arg = Some(FunctionArgument::Path(res.0));
+        level_errors.append(&mut res.1);
+      }
+      _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+      _ => return,
+    });
 
   (
     Some(ExprNode::new(Expr::FunctionCall(name.to_owned(), arg))),
     level_errors,
   )
+}
+
+fn parse_path<'tree>(
+  node: Node<'tree>,
+  source_bytes: &[u8],
+) -> (Vec<PathSegment>, Vec<ErrorNode<'tree>>) {
+  let mut path_segments = vec![];
+  let mut level_errors = vec![];
+
+  let mut cursor = node.walk();
+
+  node
+    .children(&mut cursor)
+    .for_each(|child| match child.kind() {
+      "path_segment" => {
+        let mut c_cursor = child.walk();
+
+        child
+          .children(&mut c_cursor)
+          .for_each(|child| match child.kind() {
+            "identifier" => {
+              let name = child.utf8_text(source_bytes).unwrap();
+              path_segments.push(PathSegment::String(name.to_owned()))
+            }
+            "expr" => {
+              let mut expr = parse_expr(child, source_bytes);
+              path_segments.push(PathSegment::EvalPath(expr.0));
+              level_errors.append(&mut expr.1);
+            }
+            _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+            _ => return,
+          });
+      }
+      _ if child.is_error() => level_errors.push(ErrorNode::new(child)),
+      _ => return,
+    });
+
+  (path_segments, level_errors)
 }
 
 fn parse_expr_list<'tree>(
@@ -413,7 +449,10 @@ fn parse_expr<'tree>(
   node: Node<'tree>,
   source_bytes: &[u8],
 ) -> (Option<ExprNode>, Vec<ErrorNode<'tree>>) {
-  let child = node.child(0).unwrap();
+  let child = match node.kind() {
+    "expr" => node.child(0).unwrap(),
+    _ => node,
+  };
 
   return match child.kind() {
     "ternary" => parse_ternary(child, source_bytes),
@@ -424,6 +463,8 @@ fn parse_expr<'tree>(
     "member" => parse_member(child, source_bytes),
     "indexing" => parse_indexing(child, source_bytes),
     "primary" => parse_primary(child, source_bytes),
+    "function_call" => parse_function_call(child, source_bytes),
+    "variable" => parse_variable(child, source_bytes),
     _ if child.is_error() => (None, vec![ErrorNode::new(child)]),
     _ => (None, vec![]),
   };

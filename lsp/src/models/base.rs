@@ -178,7 +178,7 @@ pub enum Operation {
 #[derive(Debug)]
 pub enum PathSegment {
   String(String),
-  EvalPath(ExprNode),
+  EvalPath(Option<ExprNode>),
 }
 
 #[derive(Debug)]
@@ -213,7 +213,6 @@ pub enum Expr {
   FunctionCall(String, Option<FunctionArgument>),
   Literal(Literal),
   Variable(Variable),
-  String(String),
 }
 
 #[derive(Debug)]
