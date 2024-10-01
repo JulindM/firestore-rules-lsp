@@ -2,13 +2,14 @@ use std::vec;
 
 use tree_sitter::{Node, Tree};
 
-use crate::{
-  Expr, ExprNode, FirestoreTree, Function, FunctionArgument, FunctionBody, Literal, Match,
-  MatchBody, MatchPath, MatchPathPart, Method, Operation, PathSegment, Rule, Variable,
-  VariableDefintion,
+use super::{
+  base::{
+    Expr, ExprNode, FirestoreTree, Function, FunctionArgument, FunctionBody, Literal, Match,
+    MatchBody, MatchPath, MatchPathPart, Method, Operation, PathSegment, Rule, Variable,
+    VariableDefintion,
+  },
+  extensions::{ErrorNode, EvaluatedTree},
 };
-
-use super::extensions::{ErrorNode, EvaluatedTree};
 
 const SERVICE_NAME: &str = "service_name";
 const ROOT_MATCH: &str = "match_body";
@@ -125,7 +126,7 @@ fn parse_match_def<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (Match, Vec
 fn parse_function<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (Function, Vec<ErrorNode>) {
   let mut name = "";
   let mut parms = vec![];
-  let mut body = FunctionBody::empty();
+  let mut body = None;
   let mut level_errors = vec![];
 
   let mut cursor = node.walk();
@@ -138,7 +139,7 @@ fn parse_function<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (Function, V
       "param" => parms.push(Variable::new(child.utf8_text(source_bytes).unwrap(), child)),
       "function_body" => {
         let mut res = parse_function_body(child, source_bytes);
-        body = res.0;
+        body = Some(res.0);
         level_errors.append(&mut res.1);
       }
       _ if child.is_error() => level_errors.push(ErrorNode::new(child, source_bytes)),

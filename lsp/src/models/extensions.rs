@@ -1,6 +1,6 @@
 use tree_sitter::{Node, Point};
 
-use crate::FirestoreTree;
+use super::base::{BaseModel, Contains, FirestoreTree};
 
 #[derive(Debug)]
 pub struct ErrorNode {
@@ -36,4 +36,28 @@ impl EvaluatedTree {
   pub fn error_nodes(&self) -> &[ErrorNode] {
     &self.error_nodes
   }
+
+  pub fn tree(&self) -> &FirestoreTree {
+    &self.tree
+  }
+}
+
+pub fn get_lowest_denominator(position: Point, field: BaseModel) -> Option<BaseModel> {
+  if !field.contains(position) {
+    return None;
+  }
+
+  let children = field.children();
+
+  if children.is_empty() {
+    return Some(field);
+  }
+
+  for child in children.into_iter() {
+    if child.contains(position) {
+      return get_lowest_denominator(position, child);
+    }
+  }
+
+  return None;
 }

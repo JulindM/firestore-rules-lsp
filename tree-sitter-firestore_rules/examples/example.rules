@@ -1,6 +1,6 @@
 service cloud.firestore {
   function name(arg1) {
-    let c = !true;
+    let name = !true;
     let c = !get(field);
     let d = 1.12 + 3 + (2 * get("yoo"));
     let g = [];

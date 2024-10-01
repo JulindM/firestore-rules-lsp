@@ -2,7 +2,7 @@ mod models;
 
 use std::{fs::File, io::Read};
 
-use models::{base::*, evaluation::evaluate_tree};
+use models::{analysis::token_type, evaluation::evaluate_tree};
 use tree_sitter_firestore_rules;
 
 pub fn main() {
@@ -32,5 +32,7 @@ pub fn main() {
   let tree = parser.parse(contents.clone(), None).unwrap();
   let eval_tree = evaluate_tree(&tree, &contents).unwrap();
 
-  print!("\n\ndone with:\n{:#?}", eval_tree.error_nodes());
+  let test = token_type(&eval_tree, 38, 14);
+
+  println!("{:?}", test.unwrap())
 }
