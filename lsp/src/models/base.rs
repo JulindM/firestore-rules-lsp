@@ -1,5 +1,23 @@
 use tree_sitter::{Node, Point};
 
+macro_rules! bm_span(
+  ($clazz:ty) => (
+    impl Spanned for $clazz {
+      fn span(&self) -> (Point, Point) {
+        (self.start, self.end)
+      }
+    }
+));
+
+macro_rules! bm_contains(
+  ($clazz:ty) => (
+    impl Contains for $clazz {
+      fn contains(&self, p: Point) -> bool {
+        (self.start, self.end).contains(p)
+      }
+    }
+));
+
 #[derive(Debug)]
 pub enum BaseModel {
   Function(Function),
@@ -27,10 +45,10 @@ impl BaseModel {
       BaseModel::MatchPath(match_path) => match_path.children(),
       BaseModel::MatchBody(match_body) => match_body.children(),
       BaseModel::ExprNode(expr_node) => expr_node.children(),
-      BaseModel::Variable(variable) => vec![],
-      BaseModel::Literal(literal) => vec![],
-      BaseModel::RuleMethod(method) => vec![],
-      BaseModel::MatchPathPart(match_path_part) => vec![],
+      BaseModel::Variable(_) => vec![],
+      BaseModel::Literal(_) => vec![],
+      BaseModel::RuleMethod(_) => vec![],
+      BaseModel::MatchPathPart(_) => vec![],
     }
   }
 }
@@ -47,9 +65,9 @@ impl Contains for BaseModel {
       BaseModel::MatchBody(match_body) => match_body.contains(p),
       BaseModel::ExprNode(expr_node) => expr_node.contains(p),
       BaseModel::Variable(variable) => variable.contains(p),
-      BaseModel::Literal(literal) => todo!(),
-      BaseModel::RuleMethod(method) => todo!(),
-      BaseModel::MatchPathPart(match_path_part) => todo!(),
+      BaseModel::Literal(literal) => literal.contains(p),
+      BaseModel::RuleMethod(meth) => meth.contains(p),
+      BaseModel::MatchPathPart(mpp) => mpp.contains(p),
     }
   }
 }
@@ -85,7 +103,7 @@ impl Contains for (Point, Point) {
       return self.1.column >= p.column;
     }
 
-    if (self.0.row == self.1.row && self.0.row != p.row) {
+    if self.0.row == self.1.row && self.0.row != p.row {
       return false;
     }
 
@@ -137,17 +155,8 @@ impl Function {
   }
 }
 
-impl Spanned for Function {
-  fn span(&self) -> (Point, Point) {
-    (self.start, self.end)
-  }
-}
-
-impl Contains for Function {
-  fn contains(&self, p: Point) -> bool {
-    self.span().contains(p)
-  }
-}
+bm_contains!(Function);
+bm_span!(Function);
 
 impl Children for Function {
   fn children(&self) -> Vec<BaseModel> {
@@ -193,17 +202,8 @@ impl FunctionBody {
   }
 }
 
-impl Spanned for FunctionBody {
-  fn span(&self) -> (Point, Point) {
-    (self.start, self.end)
-  }
-}
-
-impl Contains for FunctionBody {
-  fn contains(&self, p: Point) -> bool {
-    self.span().contains(p)
-  }
-}
+bm_contains!(FunctionBody);
+bm_span!(FunctionBody);
 
 impl Children for FunctionBody {
   fn children(&self) -> Vec<BaseModel> {
@@ -249,17 +249,8 @@ impl VariableDefintion {
   }
 }
 
-impl Spanned for VariableDefintion {
-  fn span(&self) -> (Point, Point) {
-    (self.start, self.end)
-  }
-}
-
-impl Contains for VariableDefintion {
-  fn contains(&self, p: Point) -> bool {
-    self.span().contains(p)
-  }
-}
+bm_contains!(VariableDefintion);
+bm_span!(VariableDefintion);
 
 impl Children for VariableDefintion {
   fn children(&self) -> Vec<BaseModel> {
@@ -288,23 +279,36 @@ impl Variable {
   }
 }
 
-impl Contains for Variable {
-  fn contains(&self, p: Point) -> bool {
-    self.span().contains(p)
-  }
-}
-
-impl Spanned for Variable {
-  fn span(&self) -> (Point, Point) {
-    (self.start, self.end)
-  }
-}
+bm_contains!(Variable);
+bm_span!(Variable);
 
 #[derive(Debug, Clone)]
-pub enum MatchPathPart {
-  Collection(String),
-  SinglePath(String),
-  MultiPath(String),
+pub struct MatchPathPart {
+  value: String,
+  pathpart_type: MatchPathPartType,
+  start: Point,
+  end: Point,
+}
+
+impl MatchPathPart {
+  pub fn new(value: String, pathpart_type: MatchPathPartType, node: Node) -> Self {
+    Self {
+      value,
+      pathpart_type,
+      start: node.start_position(),
+      end: node.end_position(),
+    }
+  }
+}
+
+bm_contains!(MatchPathPart);
+bm_span!(MatchPathPart);
+
+#[derive(Debug, Clone)]
+pub enum MatchPathPartType {
+  Collection,
+  SinglePath,
+  MultiPath,
 }
 
 #[derive(Debug, Clone)]
@@ -336,17 +340,8 @@ impl MatchPath {
   }
 }
 
-impl Spanned for MatchPath {
-  fn span(&self) -> (Point, Point) {
-    (self.start, self.end)
-  }
-}
-
-impl Contains for MatchPath {
-  fn contains(&self, p: Point) -> bool {
-    self.span().contains(p)
-  }
-}
+bm_contains!(MatchPath);
+bm_span!(MatchPath);
 
 impl Children for MatchPath {
   fn children(&self) -> Vec<BaseModel> {
@@ -394,17 +389,8 @@ impl Match {
   }
 }
 
-impl Spanned for Match {
-  fn span(&self) -> (Point, Point) {
-    (self.start, self.end)
-  }
-}
-
-impl Contains for Match {
-  fn contains(&self, p: Point) -> bool {
-    self.span().contains(p)
-  }
-}
+bm_contains!(Match);
+bm_span!(Match);
 
 impl Children for Match {
   fn children(&self) -> Vec<BaseModel> {
@@ -458,17 +444,8 @@ impl MatchBody {
   }
 }
 
-impl Spanned for MatchBody {
-  fn span(&self) -> (Point, Point) {
-    (self.start, self.end)
-  }
-}
-
-impl Contains for MatchBody {
-  fn contains(&self, p: Point) -> bool {
-    self.span().contains(p)
-  }
-}
+bm_contains!(MatchBody);
+bm_span!(MatchBody);
 
 impl Children for MatchBody {
   fn children(&self) -> Vec<BaseModel> {
@@ -503,7 +480,27 @@ impl Children for MatchBody {
 }
 
 #[derive(Debug, Clone)]
-pub enum Method {
+pub struct Method {
+  start: Point,
+  end: Point,
+  method_type: MethodType,
+}
+
+impl Method {
+  pub fn new(method_type: MethodType, node: Node) -> Self {
+    Self {
+      method_type,
+      start: node.start_position(),
+      end: node.end_position(),
+    }
+  }
+}
+
+bm_contains!(Method);
+bm_span!(Method);
+
+#[derive(Debug, Clone)]
+pub enum MethodType {
   Read,
   Write,
   Get,
@@ -511,6 +508,7 @@ pub enum Method {
   Create,
   Update,
   Delete,
+  Unknown,
 }
 
 #[derive(Debug, Clone)]
@@ -540,17 +538,8 @@ impl Rule {
   }
 }
 
-impl Spanned for Rule {
-  fn span(&self) -> (Point, Point) {
-    (self.start, self.end)
-  }
-}
-
-impl Contains for Rule {
-  fn contains(&self, p: Point) -> bool {
-    self.span().contains(p)
-  }
-}
+bm_span!(Rule);
+bm_contains!(Rule);
 
 impl Children for Rule {
   fn children(&self) -> Vec<BaseModel> {
@@ -598,7 +587,27 @@ pub enum FunctionArgument {
 }
 
 #[derive(Debug, Clone)]
-pub enum Literal {
+pub struct Literal {
+  start: Point,
+  end: Point,
+  literal_type: LiteralType,
+}
+
+impl Literal {
+  pub fn new(literal_type: LiteralType, node: Node) -> Self {
+    Self {
+      literal_type,
+      start: node.start_position(),
+      end: node.end_position(),
+    }
+  }
+}
+
+bm_contains!(Literal);
+bm_span!(Literal);
+
+#[derive(Debug, Clone)]
+pub enum LiteralType {
   Number(f32),
   Bool(bool),
   Null,
@@ -646,17 +655,8 @@ impl ExprNode {
   }
 }
 
-impl Spanned for ExprNode {
-  fn span(&self) -> (Point, Point) {
-    (self.start, self.end)
-  }
-}
-
-impl Contains for ExprNode {
-  fn contains(&self, p: Point) -> bool {
-    self.span().contains(p)
-  }
-}
+bm_contains!(ExprNode);
+bm_span!(ExprNode);
 
 impl Children for ExprNode {
   fn children(&self) -> Vec<BaseModel> {

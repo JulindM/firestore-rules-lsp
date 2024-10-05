@@ -2,11 +2,13 @@ use std::vec;
 
 use tree_sitter::{Node, Tree};
 
+use crate::models::base::MethodType;
+
 use super::{
   base::{
-    Expr, ExprNode, FirestoreTree, Function, FunctionArgument, FunctionBody, Literal, Match,
-    MatchBody, MatchPath, MatchPathPart, Method, Operation, PathSegment, Rule, Variable,
-    VariableDefintion,
+    Expr, ExprNode, FirestoreTree, Function, FunctionArgument, FunctionBody, Literal, LiteralType,
+    Match, MatchBody, MatchPath, MatchPathPart, MatchPathPartType, Method, Operation, PathSegment,
+    Rule, Variable, VariableDefintion,
   },
   extensions::{ErrorNode, EvaluatedTree},
 };
@@ -215,18 +217,18 @@ fn parse_match_path<'tree>(node: Node<'tree>, source_bytes: &[u8]) -> (MatchPath
     .children(&mut node.walk())
     .for_each(|child| match child.kind() {
       "collection_path_seg" => {
-        let name = child.utf8_text(source_bytes).unwrap();
-        let part = MatchPathPart::Collection(name.to_owned());
+        let name = child.utf8_text(source_bytes).unwrap().to_owned();
+        let part = MatchPathPart::new(name, MatchPathPartType::Collection, child);
         path_parts.push(part);
       }
       "single_path_seg" => {
-        let name = child.utf8_text(source_bytes).unwrap();
-        let part = MatchPathPart::SinglePath(name.to_owned());
+        let name = child.utf8_text(source_bytes).unwrap().to_owned();
+        let part = MatchPathPart::new(name, MatchPathPartType::SinglePath, child);
         path_parts.push(part);
       }
       "multi_path_seg" => {
-        let name = child.utf8_text(source_bytes).unwrap();
-        let part = MatchPathPart::MultiPath(name.to_owned());
+        let name = child.utf8_text(source_bytes).unwrap().to_owned();
+        let part = MatchPathPart::new(name, MatchPathPartType::SinglePath, child);
         path_parts.push(part);
       }
       _ if node.is_error() => level_errors.push(ErrorNode::new(node, source_bytes)),
@@ -388,17 +390,23 @@ fn parse_literal<'tree>(
 
   let literal = match child.kind() {
     _ if child.is_missing() => return (None, vec![ErrorNode::new(child, source_bytes)]),
-    "number" => Literal::Number(
-      child
-        .utf8_text(source_bytes)
-        .unwrap()
-        .parse::<f32>()
-        .unwrap(),
+    "number" => Literal::new(
+      LiteralType::Number(
+        child
+          .utf8_text(source_bytes)
+          .unwrap()
+          .parse::<f32>()
+          .unwrap(),
+      ),
+      child,
     ),
-    "true" => Literal::Bool(true),
-    "false" => Literal::Bool(false),
-    "null" => Literal::Null,
-    "string" => Literal::String(child.utf8_text(source_bytes).unwrap().to_owned()),
+    "true" => Literal::new(LiteralType::Bool(true), node),
+    "false" => Literal::new(LiteralType::Bool(false), node),
+    "null" => Literal::new(LiteralType::Null, child),
+    "string" => Literal::new(
+      LiteralType::String(child.utf8_text(source_bytes).unwrap().to_owned()),
+      child,
+    ),
     _ if child.is_error() => return (None, vec![ErrorNode::new(child, source_bytes)]),
     _ => return (None, vec![]),
   };
@@ -616,14 +624,21 @@ fn parse_method<'tree>(m_node: Node<'tree>, source_bytes: &[u8]) -> Result<Metho
 
   cursor.goto_first_child();
 
-  match cursor.node().kind() {
-    "read" => Ok(Method::Read),
-    "write" => Ok(Method::Write),
-    "get" => Ok(Method::Get),
-    "list" => Ok(Method::List),
-    "create" => Ok(Method::Create),
-    "update" => Ok(Method::Update),
-    "delete" => Ok(Method::Delete),
-    _ => Err(ErrorNode::new(cursor.node(), source_bytes)),
+  let child = cursor.node();
+  if child.is_error() {
+    return Err(ErrorNode::new(cursor.node(), source_bytes));
   }
+
+  let m_type = match child.kind() {
+    "read" => MethodType::Read,
+    "write" => MethodType::Write,
+    "get" => MethodType::Get,
+    "list" => MethodType::List,
+    "create" => MethodType::Create,
+    "update" => MethodType::Update,
+    "delete" => MethodType::Delete,
+    _ => MethodType::Unknown,
+  };
+
+  Ok(Method::new(m_type, child))
 }
