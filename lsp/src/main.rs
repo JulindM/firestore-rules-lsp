@@ -32,7 +32,5 @@ pub fn main() {
   let tree = parser.parse(contents.clone(), None).unwrap();
   let eval_tree = evaluate_tree(&tree, &contents).unwrap();
 
-  let test = token_type(&eval_tree, 33, 43);
-
-  println!("{:?}", test.unwrap())
+  println!("{}", eval_tree.definitions().len())
 }

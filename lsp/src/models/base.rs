@@ -18,7 +18,7 @@ macro_rules! bm_contains(
     }
 ));
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BaseModel {
   Function(Function),
   FunctionBody(FunctionBody),
@@ -72,7 +72,7 @@ impl Contains for BaseModel {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FirestoreTree {
   body: MatchBody,
 }
@@ -692,7 +692,8 @@ impl Children for ExprNode {
       .flatten()
       .collect(),
       Expr::FunctionCall(name, function_argument) => match function_argument {
-        Some(FunctionArgument::Path(path)) => todo!(),
+        // Todo path segments to base models
+        Some(FunctionArgument::Path(path)) => vec![],
         Some(FunctionArgument::ExprList(vec)) => {
           vec.iter().map(|expr| expr.children()).flatten().collect()
         }
