@@ -1,26 +1,18 @@
 mod models;
 
-use std::{fs::File, io::Read};
+use std::error::Error;
 
-use models::{analysis::token_type, evaluation::evaluate_tree};
+use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response};
+use lsp_types::{
+  request::GotoDefinition, GotoDefinitionResponse, InitializeParams, OneOf, ServerCapabilities,
+};
+
+use models::analysis::consume_file;
 use tree_sitter_firestore_rules;
 
-pub fn main() {
-  const PATH: &str = "../tree-sitter-firestore_rules/examples/example.rules";
+const PATH: &str = "../tree-sitter-firestore_rules/examples/example.rules";
 
-  let file_res = File::open(PATH);
-
-  let mut file;
-
-  match file_res {
-    Ok(f) => file = f,
-    Err(_) => panic!("File could not be read"),
-  }
-
-  let mut contents = vec![];
-
-  let _ = file.read_to_end(&mut contents);
-
+pub fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
   let mut parser = tree_sitter::Parser::new();
 
   let language = tree_sitter_firestore_rules::LANGUAGE;
@@ -29,8 +21,84 @@ pub fn main() {
     .set_language(&language.into())
     .expect("Error loading FirestoreRules parser");
 
-  let tree = parser.parse(contents.clone(), None).unwrap();
-  let eval_tree = evaluate_tree(&tree, &contents).unwrap();
+  // Create the transport. Includes the stdio (stdin and stdout) versions but this could
+  // also be implemented to use sockets or HTTP.
+  let (connection, io_threads) = Connection::listen("0.0.0.0:9567")?;
 
-  println!("{}", eval_tree.definitions().len())
+  // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
+  let server_capabilities = serde_json::to_value(&ServerCapabilities {
+    definition_provider: Some(OneOf::Left(true)),
+    ..Default::default()
+  })
+  .unwrap();
+
+  let initialization_params = match connection.initialize(server_capabilities) {
+    Ok(it) => it,
+    Err(e) => {
+      if e.channel_is_disconnected() {
+        io_threads.join()?;
+      }
+      return Err(e.into());
+    }
+  };
+
+  main_loop(connection, initialization_params)?;
+  io_threads.join()?;
+
+  // Shut down gracefully.
+  eprintln!("shutting down server");
+  Ok(())
+}
+
+fn main_loop(
+  connection: Connection,
+  params: serde_json::Value,
+) -> Result<(), Box<dyn Error + Sync + Send>> {
+  let _params: InitializeParams = serde_json::from_value(params).unwrap();
+
+  eprintln!("starting example main loop");
+
+  for msg in &connection.receiver {
+    eprintln!("got msg: {msg:?}");
+    match msg {
+      Message::Request(req) => {
+        if connection.handle_shutdown(&req)? {
+          return Ok(());
+        }
+        eprintln!("got request: {req:?}");
+        match cast::<GotoDefinition>(req) {
+          Ok((id, params)) => {
+            println!("got gotoDefinition request #{id}: {params:?}");
+            let result = Some(GotoDefinitionResponse::Array(Vec::new()));
+            let result = serde_json::to_value(&result).unwrap();
+            let resp = Response {
+              id,
+              result: Some(result),
+              error: None,
+            };
+            connection.sender.send(Message::Response(resp))?;
+            continue;
+          }
+          Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+          Err(ExtractError::MethodMismatch(req)) => req,
+        };
+        // ...
+      }
+      Message::Response(resp) => {
+        eprintln!("got response: {resp:?}");
+      }
+      Message::Notification(not) => {
+        eprintln!("got notification: {not:?}");
+      }
+    }
+  }
+  Ok(())
+}
+
+fn cast<R>(req: Request) -> Result<(RequestId, R::Params), ExtractError<Request>>
+where
+  R: lsp_types::request::Request,
+  R::Params: serde::de::DeserializeOwned,
+{
+  req.extract(R::METHOD)
 }
