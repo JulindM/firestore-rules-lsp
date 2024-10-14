@@ -2,7 +2,7 @@ use std::vec;
 
 use tree_sitter::{Node, Tree};
 
-use crate::models::base::MethodType;
+use crate::parser::base::MethodType;
 
 use super::{
   base::{
