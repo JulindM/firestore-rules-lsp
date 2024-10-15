@@ -1,14 +1,22 @@
 import { log } from "console";
+import { open, openSync, readFileSync } from "fs";
 import { exit } from "process";
 import { createServerSocketTransport } from "vscode-jsonrpc/node";
 import {
   createProtocolConnection,
+  DidOpenTextDocumentNotification,
   ExitNotification,
+  HoverParams,
+  HoverRequest,
   InitializedNotification,
   InitializeParams,
   InitializeRequest,
   ShutdownRequest,
+  TextDocumentItem,
 } from "vscode-languageserver-protocol";
+
+const folder_path =
+  "/Users/julind/Projects/firestore-rules-lsp/tree-sitter-firestore_rules/examples";
 
 run().then(
   () => exit(0),
@@ -25,7 +33,7 @@ async function run(): Promise<void> {
   const connection = createProtocolConnection(messages[0], messages[1]);
 
   const init: InitializeParams = {
-    rootUri: "file:///",
+    rootUri: "file://" + folder_path,
     processId: process.pid,
     capabilities: {},
     workspaceFolders: null,
@@ -34,17 +42,36 @@ async function run(): Promise<void> {
   connection.listen();
   log("Listening");
 
-  await sleep(1000);
-
   await connection.sendRequest(InitializeRequest.type, init);
   log("Initialized server");
-
-  await sleep(1000);
 
   await connection.sendNotification(InitializedNotification.type, {});
   log("Initialized notif sent");
 
-  await sleep(3000);
+  const file_path = folder_path + "/example.rules";
+  const file_contents = readFileSync(file_path);
+  const uri = "file://" + file_path;
+
+  await connection.sendNotification(DidOpenTextDocumentNotification.type, {
+    textDocument: {
+      uri: uri,
+      languageId: "firestore_rules",
+      text: file_contents.toString(),
+      version: 0,
+    },
+  });
+
+  let result = await connection.sendRequest(HoverRequest.type, {
+    textDocument: {
+      uri: uri,
+    },
+    position: {
+      line: 18,
+      character: 11,
+    },
+  } as HoverParams);
+
+  log(result);
 
   await connection.sendRequest(ShutdownRequest.type);
   log("Shutdown request sent");

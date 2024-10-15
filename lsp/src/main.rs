@@ -1,3 +1,4 @@
+mod parser;
 mod server;
 
 use std::error::Error;
@@ -6,7 +7,7 @@ use clap::Parser;
 use server::server::start_server;
 use tree_sitter_firestore_rules;
 
-pub fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+pub fn main() -> Result<(), Box<dyn Error>> {
   let args = Args::parse();
 
   let language = tree_sitter_firestore_rules::LANGUAGE;
@@ -17,7 +18,8 @@ pub fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     .set_language(&language.into())
     .expect("Error loading FirestoreRules parser");
 
-  start_server(args.port, parser)
+  start_server(args.port, parser)?;
+  Ok(())
 }
 
 #[derive(clap::Parser)]
