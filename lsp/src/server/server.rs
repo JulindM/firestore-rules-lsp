@@ -35,10 +35,10 @@ pub fn start_server(port: u16, mut parser: Parser) -> Result<(), Box<dyn Error>>
   Ok(())
 }
 
-type LSPTreeStorage = HashMap<String, (EvaluatedTree, Tree)>;
+type LSPTreeStorage<'a> = HashMap<String, (EvaluatedTree<'a>, Tree)>;
 
-fn main_loop(connection: Connection, parser: &mut Parser) -> Result<(), Box<dyn Error>> {
-  let mut evaulated_trees: LSPTreeStorage = HashMap::new();
+fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<dyn Error>> {
+  let mut evaulated_trees: LSPTreeStorage<'a> = HashMap::new();
 
   for msg in &connection.receiver {
     match msg {
@@ -77,16 +77,16 @@ fn main_loop(connection: Connection, parser: &mut Parser) -> Result<(), Box<dyn 
   Ok(())
 }
 
-fn open_doc(
+fn open_doc<'a>(
   did_open: &DidOpenTextDocumentParams,
   parser: &mut Parser,
-  evaulated_trees: &mut LSPTreeStorage,
+  evaulated_trees: &mut LSPTreeStorage<'a>,
 ) {
   // FIXME What if one these returns none
   let content = did_open.text_document.text.clone();
 
   let parsed_tree = parser.parse(content.clone(), None).unwrap();
-  let evaluated_tree = evaluate_tree(&parsed_tree, content.as_bytes()).unwrap();
+  let evaluated_tree = evaluate_tree(parsed_tree.clone(), content.as_bytes()).unwrap();
 
   evaulated_trees.insert(
     did_open.text_document.uri.to_string(),
@@ -94,18 +94,18 @@ fn open_doc(
   );
 }
 
-fn change_doc(
+fn change_doc<'a>(
   did_change: &DidChangeTextDocumentParams,
   parser: &mut Parser,
-  evaulated_trees: &mut LSPTreeStorage,
+  evaulated_trees: &mut LSPTreeStorage<'a>,
 ) {
   // FIXME What if one these returns none
   let (_, old_tree) = evaulated_trees.find_ver(did_change.text_document.clone());
 
   let content = &did_change.content_changes.last().unwrap().text;
 
-  let parsed_tree = parser.parse(content.clone(), Some(old_tree)).unwrap();
-  let evaluated_tree = evaluate_tree(&parsed_tree, content.as_bytes()).unwrap();
+  let parsed_tree = parser.parse(content.clone(), None).unwrap();
+  let evaluated_tree = evaluate_tree(parsed_tree.clone(), content.as_bytes()).unwrap();
 
   evaulated_trees.insert(
     did_change.text_document.uri.to_string(),
@@ -113,9 +113,9 @@ fn change_doc(
   );
 }
 
-fn handle_hover(
+fn handle_hover<'a>(
   hover_r: (RequestId, HoverParams),
-  evaulated_trees: &LSPTreeStorage,
+  evaulated_trees: &LSPTreeStorage<'a>,
   req: Request,
   connection: &Connection,
 ) {
@@ -160,17 +160,23 @@ where
 }
 
 trait Find {
-  fn find(&self, text_document: TextDocumentIdentifier) -> &(EvaluatedTree, Tree);
-  fn find_ver(&self, text_document: VersionedTextDocumentIdentifier) -> &(EvaluatedTree, Tree);
+  fn find<'a>(&'a self, text_document: TextDocumentIdentifier) -> &(EvaluatedTree<'a>, Tree);
+  fn find_ver<'a>(
+    &'a self,
+    text_document: VersionedTextDocumentIdentifier,
+  ) -> &(EvaluatedTree<'a>, Tree);
 }
 
-impl Find for LSPTreeStorage {
-  fn find(&self, text_document: TextDocumentIdentifier) -> &(EvaluatedTree, Tree) {
+impl<'b> Find for LSPTreeStorage<'b> {
+  fn find<'a>(&'a self, text_document: TextDocumentIdentifier) -> &(EvaluatedTree<'a>, Tree) {
     let id = text_document.uri.as_str();
     &self[id]
   }
 
-  fn find_ver(&self, text_document: VersionedTextDocumentIdentifier) -> &(EvaluatedTree, Tree) {
+  fn find_ver<'a>(
+    &'a self,
+    text_document: VersionedTextDocumentIdentifier,
+  ) -> &(EvaluatedTree<'a>, Tree) {
     let id = text_document.uri.as_str();
     &self[id]
   }

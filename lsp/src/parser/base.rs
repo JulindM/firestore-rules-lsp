@@ -1,8 +1,8 @@
 use tree_sitter::{Node, Point};
 
 macro_rules! bm_span(
-  ($clazz:ty) => (
-    impl Spanned for $clazz {
+  ($clazz:ident $($life:lifetime),*) => (
+    impl<$($life),*> Spanned for $clazz<$($life),*> {
       fn span(&self) -> (Point, Point) {
         (self.start, self.end)
       }
@@ -10,8 +10,8 @@ macro_rules! bm_span(
 ));
 
 macro_rules! bm_contains(
-  ($clazz:ty) => (
-    impl Contains for $clazz {
+  ($clazz:ident $($life:lifetime),*) => (
+    impl<$($life),*> Contains for $clazz<$($life),*> {
       fn contains(&self, p: Point) -> bool {
         (self.start, self.end).contains(p)
       }
@@ -19,14 +19,14 @@ macro_rules! bm_contains(
 ));
 
 #[derive(Debug, Clone)]
-pub enum BaseModel {
+pub enum BaseModel<'a> {
   Function(Function),
   FunctionBody(FunctionBody),
   Rule(Rule),
   VariableDefintion(VariableDefintion),
   MatchPath(MatchPath),
-  Match(Match),
-  MatchBody(MatchBody),
+  Match(Match<'a>),
+  MatchBody(MatchBody<'a>),
   ExprNode(ExprNode),
   Variable(Variable),
   Literal(Literal),
@@ -34,8 +34,8 @@ pub enum BaseModel {
   MatchPathPart(MatchPathPart),
 }
 
-impl BaseModel {
-  pub fn children(&self) -> Vec<BaseModel> {
+impl<'a> BaseModel<'a> {
+  pub fn children(&self) -> Vec<BaseModel<'a>> {
     match self {
       BaseModel::Function(function) => function.children(),
       BaseModel::FunctionBody(function_body) => function_body.children(),
@@ -53,7 +53,7 @@ impl BaseModel {
   }
 }
 
-impl Contains for BaseModel {
+impl<'a> Contains for BaseModel<'a> {
   fn contains(&self, p: Point) -> bool {
     match self {
       BaseModel::Function(function) => function.contains(p),
@@ -73,16 +73,16 @@ impl Contains for BaseModel {
 }
 
 #[derive(Debug, Clone)]
-pub struct FirestoreTree {
-  body: MatchBody,
+pub struct FirestoreTree<'a> {
+  body: MatchBody<'a>,
 }
 
 pub trait Contains {
   fn contains(&self, p: Point) -> bool;
 }
 
-pub trait Children {
-  fn children(&self) -> Vec<BaseModel>;
+pub trait Children<'a> {
+  fn children(&self) -> Vec<BaseModel<'a>>;
 }
 
 pub trait Spanned {
@@ -111,12 +111,12 @@ impl Contains for (Point, Point) {
   }
 }
 
-impl FirestoreTree {
-  pub fn new(body: MatchBody) -> Self {
+impl<'a> FirestoreTree<'a> {
+  pub fn new(body: MatchBody<'a>) -> Self {
     Self { body }
   }
 
-  pub fn body(&self) -> &MatchBody {
+  pub fn body(&self) -> &MatchBody<'a> {
     &self.body
   }
 }
@@ -131,11 +131,11 @@ pub struct Function {
 }
 
 impl Function {
-  pub fn new(
+  pub fn new<'a>(
     name: &str,
     parameters: Vec<Variable>,
     body: Option<FunctionBody>,
-    node: Node,
+    node: Node<'a>,
   ) -> Self {
     Self {
       name: name.to_owned(),
@@ -158,8 +158,8 @@ impl Function {
 bm_contains!(Function);
 bm_span!(Function);
 
-impl Children for Function {
-  fn children(&self) -> Vec<BaseModel> {
+impl<'a> Children<'a> for Function {
+  fn children(&self) -> Vec<BaseModel<'a>> {
     let mut res = self
       .parameters()
       .iter()
@@ -184,7 +184,11 @@ pub struct FunctionBody {
 }
 
 impl FunctionBody {
-  pub fn new(variable_defs: Vec<VariableDefintion>, ret: Option<ExprNode>, node: Node) -> Self {
+  pub fn new<'a>(
+    variable_defs: Vec<VariableDefintion>,
+    ret: Option<ExprNode>,
+    node: Node<'a>,
+  ) -> Self {
     Self {
       variable_defs,
       ret,
@@ -205,8 +209,8 @@ impl FunctionBody {
 bm_contains!(FunctionBody);
 bm_span!(FunctionBody);
 
-impl Children for FunctionBody {
-  fn children(&self) -> Vec<BaseModel> {
+impl<'a> Children<'a> for FunctionBody {
+  fn children(&self) -> Vec<BaseModel<'a>> {
     let mut res = self
       .variable_defs()
       .iter()
@@ -231,7 +235,7 @@ pub struct VariableDefintion {
 }
 
 impl VariableDefintion {
-  pub fn new(name: &str, definition: Option<ExprNode>, node: Node) -> Self {
+  pub fn new<'a>(name: &str, definition: Option<ExprNode>, node: Node<'a>) -> Self {
     Self {
       name: name.to_owned(),
       definition,
@@ -252,8 +256,8 @@ impl VariableDefintion {
 bm_contains!(VariableDefintion);
 bm_span!(VariableDefintion);
 
-impl Children for VariableDefintion {
-  fn children(&self) -> Vec<BaseModel> {
+impl<'a> Children<'a> for VariableDefintion {
+  fn children(&self) -> Vec<BaseModel<'a>> {
     if self.definition().is_none() {
       return vec![];
     };
@@ -270,7 +274,7 @@ pub struct Variable {
 }
 
 impl Variable {
-  pub fn new(name: &str, node: Node) -> Self {
+  pub fn new<'a>(name: &str, node: Node<'a>) -> Self {
     Self {
       name: String::from(name),
       start: node.start_position(),
@@ -291,7 +295,7 @@ pub struct MatchPathPart {
 }
 
 impl MatchPathPart {
-  pub fn new(value: String, pathpart_type: MatchPathPartType, node: Node) -> Self {
+  pub fn new<'a>(value: String, pathpart_type: MatchPathPartType, node: Node<'a>) -> Self {
     Self {
       value,
       pathpart_type,
@@ -319,7 +323,7 @@ pub struct MatchPath {
 }
 
 impl MatchPath {
-  pub fn new(path_parts: Vec<MatchPathPart>, node: Node) -> Self {
+  pub fn new<'a>(path_parts: Vec<MatchPathPart>, node: Node<'a>) -> Self {
     Self {
       path_parts,
       start: node.start_position(),
@@ -327,7 +331,7 @@ impl MatchPath {
     }
   }
 
-  pub(crate) fn empty(node: Node) -> Self {
+  pub(crate) fn empty<'a>(node: Node<'a>) -> Self {
     Self {
       path_parts: vec![],
       start: node.start_position(),
@@ -343,8 +347,8 @@ impl MatchPath {
 bm_contains!(MatchPath);
 bm_span!(MatchPath);
 
-impl Children for MatchPath {
-  fn children(&self) -> Vec<BaseModel> {
+impl<'a> Children<'a> for MatchPath {
+  fn children(&self) -> Vec<BaseModel<'a>> {
     self
       .path_parts()
       .iter()
@@ -354,16 +358,23 @@ impl Children for MatchPath {
 }
 
 #[derive(Debug, Clone)]
-pub struct Match {
-  body: MatchBody,
-  path: MatchPath,
+pub struct Match<'a> {
+  parent_match: Option<&'a Match<'a>>,
+  body: Option<MatchBody<'a>>,
+  path: Option<MatchPath>,
   end: Point,
   start: Point,
 }
 
-impl Match {
-  pub fn new(path: MatchPath, body: MatchBody, node: Node) -> Self {
+impl<'a> Match<'a> {
+  pub fn new<'b>(
+    parent_match: Option<&'a Match<'a>>,
+    path: Option<MatchPath>,
+    body: Option<MatchBody<'a>>,
+    node: Node<'b>,
+  ) -> Self {
     Self {
+      parent_match,
       path,
       body,
       start: node.start_position(),
@@ -371,47 +382,50 @@ impl Match {
     }
   }
 
-  pub(crate) fn empty(node: Node) -> Self {
-    Self {
-      path: MatchPath::empty(node),
-      body: MatchBody::empty(node),
-      start: node.start_position(),
-      end: node.end_position(),
-    }
+  pub fn path(&self) -> Option<&MatchPath> {
+    self.path.as_ref()
   }
 
-  pub fn body(&self) -> &MatchBody {
-    &self.body
-  }
-
-  pub fn path(&self) -> &MatchPath {
-    &self.path
+  pub fn body(&self) -> Option<&MatchBody<'a>> {
+    self.body.as_ref()
   }
 }
 
-bm_contains!(Match);
-bm_span!(Match);
+bm_contains!(Match 'a);
+bm_span!(Match 'a);
 
-impl Children for Match {
-  fn children(&self) -> Vec<BaseModel> {
-    vec![
-      BaseModel::MatchPath(self.path().clone()),
-      BaseModel::MatchBody(self.body().clone()),
-    ]
+impl<'a> Children<'a> for Match<'a> {
+  fn children(&self) -> Vec<BaseModel<'a>> {
+    let mut res = vec![];
+
+    if self.path.is_some() {
+      res.push(BaseModel::MatchPath(self.path.clone().unwrap()));
+    }
+
+    if self.body.is_some() {
+      res.push(BaseModel::MatchBody(self.body.clone().unwrap()));
+    }
+
+    res
   }
 }
 
 #[derive(Debug, Clone)]
-pub struct MatchBody {
+pub struct MatchBody<'a> {
   functions: Vec<Function>,
-  matches: Vec<Match>,
+  matches: Vec<Match<'a>>,
   rules: Vec<Rule>,
   start: Point,
   end: Point,
 }
 
-impl MatchBody {
-  pub fn new(functions: Vec<Function>, matches: Vec<Match>, rules: Vec<Rule>, node: Node) -> Self {
+impl<'a> MatchBody<'a> {
+  pub fn new<'b>(
+    functions: Vec<Function>,
+    matches: Vec<Match<'a>>,
+    rules: Vec<Rule>,
+    node: Node<'b>,
+  ) -> Self {
     Self {
       functions,
       matches,
@@ -421,7 +435,7 @@ impl MatchBody {
     }
   }
 
-  pub(crate) fn empty(node: Node) -> Self {
+  pub(crate) fn empty(node: Node<'a>) -> Self {
     Self {
       functions: vec![],
       matches: vec![],
@@ -435,7 +449,7 @@ impl MatchBody {
     &self.functions
   }
 
-  pub fn matches(&self) -> &[Match] {
+  pub fn matches(&self) -> &[Match<'a>] {
     &self.matches
   }
 
@@ -444,12 +458,12 @@ impl MatchBody {
   }
 }
 
-bm_contains!(MatchBody);
-bm_span!(MatchBody);
+bm_contains!(MatchBody 'a);
+bm_span!(MatchBody 'a);
 
-impl Children for MatchBody {
-  fn children(&self) -> Vec<BaseModel> {
-    let mut res: Vec<Vec<BaseModel>> = vec![];
+impl<'a> Children<'a> for MatchBody<'a> {
+  fn children(&self) -> Vec<BaseModel<'a>> {
+    let mut res: Vec<Vec<BaseModel<'a>>> = vec![];
 
     res.push(
       self
@@ -487,7 +501,7 @@ pub struct Method {
 }
 
 impl Method {
-  pub fn new(method_type: MethodType, node: Node) -> Self {
+  pub fn new<'a>(method_type: MethodType, node: Node<'a>) -> Self {
     Self {
       method_type,
       start: node.start_position(),
@@ -520,7 +534,7 @@ pub struct Rule {
 }
 
 impl Rule {
-  pub fn new(methods: Vec<Method>, condition: Option<ExprNode>, node: Node) -> Self {
+  pub fn new<'a>(methods: Vec<Method>, condition: Option<ExprNode>, node: Node<'a>) -> Self {
     Self {
       methods,
       condition,
@@ -541,15 +555,15 @@ impl Rule {
 bm_span!(Rule);
 bm_contains!(Rule);
 
-impl Children for Rule {
-  fn children(&self) -> Vec<BaseModel> {
-    let mut res: Vec<BaseModel> = vec![];
+impl<'a> Children<'a> for Rule {
+  fn children(&self) -> Vec<BaseModel<'a>> {
+    let mut res: Vec<BaseModel<'a>> = vec![];
 
     if self.condition.is_some() {
       res.push(BaseModel::ExprNode(self.condition().unwrap().clone()));
     }
 
-    let mut meths: Vec<BaseModel> = self
+    let mut meths: Vec<BaseModel<'a>> = self
       .methods()
       .iter()
       .map(|meth| BaseModel::RuleMethod(meth.clone()))
@@ -594,7 +608,7 @@ pub struct Literal {
 }
 
 impl Literal {
-  pub fn new(literal_type: LiteralType, node: Node) -> Self {
+  pub fn new<'a>(literal_type: LiteralType, node: Node<'a>) -> Self {
     Self {
       literal_type,
       start: node.start_position(),
@@ -616,19 +630,19 @@ pub enum LiteralType {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-  Unary(Option<Operation>, Box<Option<ExprNode>>),
+  Unary(Option<Operation>, Option<Box<ExprNode>>),
   Binary(
     Option<Operation>,
-    Box<Option<ExprNode>>,
-    Box<Option<ExprNode>>,
+    Option<Box<ExprNode>>,
+    Option<Box<ExprNode>>,
   ),
   Ternary(
-    Box<Option<ExprNode>>,
-    Box<Option<ExprNode>>,
-    Box<Option<ExprNode>>,
+    Option<Box<ExprNode>>,
+    Option<Box<ExprNode>>,
+    Option<Box<ExprNode>>,
   ),
-  Member(Box<Option<ExprNode>>, Box<Option<ExprNode>>),
-  Indexing(Box<Option<ExprNode>>, Box<Option<ExprNode>>),
+  Member(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
+  Indexing(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
   FunctionCall(String, Option<FunctionArgument>),
   Literal(Literal),
   Variable(Variable),
@@ -642,7 +656,7 @@ pub struct ExprNode {
 }
 
 impl ExprNode {
-  pub fn new(expr: Expr, node: Node) -> Self {
+  pub fn new<'a>(expr: Expr, node: Node<'a>) -> Self {
     Self {
       expr,
       start: node.start_position(),
@@ -658,35 +672,35 @@ impl ExprNode {
 bm_contains!(ExprNode);
 bm_span!(ExprNode);
 
-impl Children for ExprNode {
-  fn children(&self) -> Vec<BaseModel> {
+impl<'a> Children<'a> for ExprNode {
+  fn children(&self) -> Vec<BaseModel<'a>> {
     match self.expr() {
-      Expr::Unary(_, expr_node) => expr_node.clone().map_or(vec![], |node| node.children()),
+      Expr::Unary(_, expr_node) => expr_node.as_ref().map_or(vec![], |node| node.children()),
       Expr::Binary(_, expr_node, expr_node1) => vec![
-        expr_node.clone().map_or(vec![], |node| node.children()),
-        expr_node1.clone().map_or(vec![], |node| node.children()),
+        expr_node.as_ref().map_or(vec![], |node| node.children()),
+        expr_node1.as_ref().map_or(vec![], |node| node.children()),
       ]
       .into_iter()
       .flatten()
       .collect(),
       Expr::Ternary(expr_node, expr_node1, expr_node2) => vec![
-        expr_node.clone().map_or(vec![], |node| node.children()),
-        expr_node1.clone().map_or(vec![], |node| node.children()),
-        expr_node2.clone().map_or(vec![], |node| node.children()),
+        expr_node.as_ref().map_or(vec![], |node| node.children()),
+        expr_node1.as_ref().map_or(vec![], |node| node.children()),
+        expr_node2.as_ref().map_or(vec![], |node| node.children()),
       ]
       .into_iter()
       .flatten()
       .collect(),
       Expr::Member(expr_node, expr_node1) => vec![
-        expr_node.clone().map_or(vec![], |node| node.children()),
-        expr_node1.clone().map_or(vec![], |node| node.children()),
+        expr_node.as_ref().map_or(vec![], |node| node.children()),
+        expr_node1.as_ref().map_or(vec![], |node| node.children()),
       ]
       .into_iter()
       .flatten()
       .collect(),
       Expr::Indexing(expr_node, expr_node1) => vec![
-        expr_node.clone().map_or(vec![], |node| node.children()),
-        expr_node1.clone().map_or(vec![], |node| node.children()),
+        expr_node.as_ref().map_or(vec![], |node| node.children()),
+        expr_node1.as_ref().map_or(vec![], |node| node.children()),
       ]
       .into_iter()
       .flatten()

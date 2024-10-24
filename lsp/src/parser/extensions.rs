@@ -10,7 +10,7 @@ pub struct ErrorNode {
 }
 
 impl ErrorNode {
-  pub fn new(node: Node, source: &[u8]) -> Self {
+  pub fn new<'b>(node: Node<'b>, source: &[u8]) -> Self {
     Self {
       content: node.utf8_text(source).unwrap_or("").to_owned(),
       start: node.start_position(),
@@ -20,14 +20,14 @@ impl ErrorNode {
 }
 
 #[derive(Debug)]
-pub struct EvaluatedTree {
-  tree: FirestoreTree,
+pub struct EvaluatedTree<'a> {
+  tree: FirestoreTree<'a>,
   error_nodes: Vec<ErrorNode>,
   definitions: Vec<DefinitionType>,
 }
 
-impl EvaluatedTree {
-  pub fn new(tree: FirestoreTree, errors: Vec<ErrorNode>) -> Self {
+impl<'a> EvaluatedTree<'a> {
+  pub fn new(tree: FirestoreTree<'a>, errors: Vec<ErrorNode>) -> Self {
     Self {
       tree: tree.clone(),
       error_nodes: errors,
@@ -39,7 +39,7 @@ impl EvaluatedTree {
     &self.error_nodes
   }
 
-  pub fn tree(&self) -> &FirestoreTree {
+  pub fn tree(&self) -> &FirestoreTree<'a> {
     &self.tree
   }
 
@@ -55,7 +55,7 @@ pub enum DefinitionType {
   GlobalVariables(String),
 }
 
-fn is_definition(field: BaseModel) -> Option<DefinitionType> {
+fn is_definition<'a>(field: BaseModel<'a>) -> Option<DefinitionType> {
   match field {
     BaseModel::Function(function) => Some(DefinitionType::Function(function)),
     BaseModel::VariableDefintion(variable_defintion) => {
@@ -64,12 +64,12 @@ fn is_definition(field: BaseModel) -> Option<DefinitionType> {
     _ => None,
   }
 }
-fn calculate_definitions(tree: &FirestoreTree) -> Vec<DefinitionType> {
+fn calculate_definitions<'a>(tree: &FirestoreTree<'a>) -> Vec<DefinitionType> {
   let body_base = BaseModel::MatchBody(tree.body().clone());
   get_children(body_base, &is_definition)
 }
 
-pub fn get_lowest_denominator(position: Point, field: BaseModel) -> Option<BaseModel> {
+pub fn get_lowest_denominator<'a>(position: Point, field: BaseModel<'a>) -> Option<BaseModel<'a>> {
   if !field.contains(position) {
     return None;
   }
@@ -77,21 +77,19 @@ pub fn get_lowest_denominator(position: Point, field: BaseModel) -> Option<BaseM
   let children = field.children();
 
   if children.is_empty() {
-    return Some(field);
+    return Some(field.clone());
   }
 
-  for child in children.into_iter() {
-    if child.contains(position) {
-      return get_lowest_denominator(position, child);
-    }
-  }
-
-  return None;
+  field
+    .children()
+    .into_iter()
+    .find(|el| el.contains(position))
+    .map(|el| get_lowest_denominator(position, el).unwrap())
 }
 
-pub fn get_children<F>(field: BaseModel, filter: &F) -> Vec<DefinitionType>
+pub fn get_children<'a, F>(field: BaseModel<'a>, filter: &F) -> Vec<DefinitionType>
 where
-  F: Fn(BaseModel) -> Option<DefinitionType>,
+  F: Fn(BaseModel<'a>) -> Option<DefinitionType>,
 {
   let mut result = vec![];
 

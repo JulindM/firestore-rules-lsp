@@ -1,3 +1,5 @@
+#![deny(elided_lifetimes_in_paths)]
+
 mod parser;
 mod server;
 
