@@ -7,7 +7,6 @@ use std::{collections::HashMap, error::Error};
 use tree_sitter::{Parser, Point, Tree};
 
 use crate::parser::{
-  base::BaseModel,
   evaluation::evaluate_tree,
   extensions::{get_lowest_denominator, EvaluatedTree},
 };
@@ -122,11 +121,8 @@ fn handle_hover<'a>(
   let hover_params = hover_r.1.text_document_position_params;
   let (ev_tree, _) = evaulated_trees.find(hover_params.text_document);
 
-  let type_info = get_lowest_denominator(
-    to_point(hover_params.position),
-    BaseModel::MatchBody(ev_tree.tree().body().clone()),
-  )
-  .unwrap();
+  let type_info =
+    get_lowest_denominator(to_point(hover_params.position), ev_tree.tree().body()).unwrap();
 
   let hover = Hover {
     contents: HoverContents::Markup(MarkupContent {

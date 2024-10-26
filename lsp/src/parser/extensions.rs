@@ -1,6 +1,6 @@
 use tree_sitter::{Node, Point};
 
-use super::base::{BaseModel, Contains, FirestoreTree, Function, VariableDefintion};
+use super::base::{BaseModel, Children, FirestoreTree, Function, VariableDefintion};
 
 #[derive(Debug)]
 pub struct ErrorNode {
@@ -57,53 +57,47 @@ pub enum DefinitionType {
 
 fn is_definition<'a>(field: BaseModel<'a>) -> Option<DefinitionType> {
   match field {
-    BaseModel::Function(function) => Some(DefinitionType::Function(function)),
+    BaseModel::Function(function) => Some(DefinitionType::Function(function.clone())),
     BaseModel::VariableDefintion(variable_defintion) => {
-      Some(DefinitionType::Variable(variable_defintion))
+      Some(DefinitionType::Variable(variable_defintion.clone()))
     }
     _ => None,
   }
 }
 fn calculate_definitions<'a>(tree: &FirestoreTree<'a>) -> Vec<DefinitionType> {
-  let body_base = BaseModel::MatchBody(tree.body().clone());
-  get_children(body_base, &is_definition)
+  filter_children(tree.body(), &is_definition)
 }
 
-pub fn get_lowest_denominator<'a>(position: Point, field: BaseModel<'a>) -> Option<BaseModel<'a>> {
-  if !field.contains(position) {
+pub fn get_lowest_denominator<'a>(
+  position: Point,
+  nestable: &'a dyn Children<'a>,
+) -> Option<BaseModel<'a>> {
+  if !nestable.contains(position) {
     return None;
   }
 
-  let children = field.children();
+  let children = nestable.children();
 
-  if children.is_empty() {
-    return Some(field.clone());
+  let child_hit = children.into_iter().find(|el| el.contains(position));
+
+  if child_hit.is_none() {
+    return Some(nestable.to_base_model());
   }
 
-  field
-    .children()
-    .into_iter()
-    .find(|el| el.contains(position))
-    .map(|el| get_lowest_denominator(position, el).unwrap())
+  get_lowest_denominator(position, child_hit.unwrap())
 }
 
-pub fn get_children<'a, F>(field: BaseModel<'a>, filter: &F) -> Vec<DefinitionType>
-where
-  F: Fn(BaseModel<'a>) -> Option<DefinitionType>,
-{
+pub fn filter_children<'a, FRes>(
+  field: &'a dyn Children<'a>,
+  filter: &dyn Fn(BaseModel<'a>) -> Option<FRes>,
+) -> Vec<FRes> {
   let mut result = vec![];
-
-  let top_level_result = filter(field.clone());
-
-  if top_level_result.is_some() {
-    result.push(top_level_result.unwrap());
-  }
 
   let children = field.children();
 
   if !children.is_empty() {
     for child in children.into_iter() {
-      let mut child_res = get_children(child, filter);
+      let mut child_res = filter_children(child, filter);
       result.append(&mut child_res);
     }
   }

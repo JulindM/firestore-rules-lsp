@@ -18,71 +18,41 @@ macro_rules! bm_contains(
     }
 ));
 
-#[derive(Debug, Clone)]
-pub enum BaseModel<'a> {
-  Function(Function),
-  FunctionBody(FunctionBody),
-  Rule(Rule),
-  VariableDefintion(VariableDefintion),
-  MatchPath(MatchPath),
-  Match(Match<'a>),
-  MatchBody(MatchBody<'a>),
-  ExprNode(ExprNode),
-  Variable(Variable),
-  Literal(Literal),
-  RuleMethod(Method),
-  MatchPathPart(MatchPathPart),
-}
-
-impl<'a> BaseModel<'a> {
-  pub fn children(&self) -> Vec<BaseModel<'a>> {
-    match self {
-      BaseModel::Function(function) => function.children(),
-      BaseModel::FunctionBody(function_body) => function_body.children(),
-      BaseModel::Rule(rule) => rule.children(),
-      BaseModel::VariableDefintion(variable_defintion) => variable_defintion.children(),
-      BaseModel::Match(mtch) => mtch.children(),
-      BaseModel::MatchPath(match_path) => match_path.children(),
-      BaseModel::MatchBody(match_body) => match_body.children(),
-      BaseModel::ExprNode(expr_node) => expr_node.children(),
-      BaseModel::Variable(_) => vec![],
-      BaseModel::Literal(_) => vec![],
-      BaseModel::RuleMethod(_) => vec![],
-      BaseModel::MatchPathPart(_) => vec![],
+macro_rules! bm_to_base_model(
+  ($clazz:ident) => (
+    impl ToBaseModel for $clazz {
+      fn to_base_model<'a>(&'a self) -> BaseModel<'a>{
+        BaseModel::$clazz(&self)
+      }
     }
-  }
-}
+));
 
-impl<'a> Contains for BaseModel<'a> {
-  fn contains(&self, p: Point) -> bool {
-    match self {
-      BaseModel::Function(function) => function.contains(p),
-      BaseModel::FunctionBody(function_body) => function_body.contains(p),
-      BaseModel::Rule(rule) => rule.contains(p),
-      BaseModel::VariableDefintion(variable_defintion) => variable_defintion.contains(p),
-      BaseModel::Match(mtch) => mtch.contains(p),
-      BaseModel::MatchPath(match_path) => match_path.contains(p),
-      BaseModel::MatchBody(match_body) => match_body.contains(p),
-      BaseModel::ExprNode(expr_node) => expr_node.contains(p),
-      BaseModel::Variable(variable) => variable.contains(p),
-      BaseModel::Literal(literal) => literal.contains(p),
-      BaseModel::RuleMethod(meth) => meth.contains(p),
-      BaseModel::MatchPathPart(mpp) => mpp.contains(p),
-    }
-  }
-}
-
-#[derive(Debug, Clone)]
-pub struct FirestoreTree<'a> {
-  body: MatchBody<'a>,
+pub trait Children<'a>: Contains + ToBaseModel {
+  fn children(&'a self) -> Vec<&'a dyn Children<'a>>;
 }
 
 pub trait Contains {
-  fn contains(&self, p: Point) -> bool;
+  fn contains<'a>(&'a self, p: Point) -> bool;
 }
 
-pub trait Children<'a> {
-  fn children(&self) -> Vec<BaseModel<'a>>;
+pub trait ToBaseModel: Contains {
+  fn to_base_model<'a>(&'a self) -> BaseModel<'a>;
+}
+
+#[derive(Debug, Clone)]
+pub enum BaseModel<'a> {
+  Function(&'a Function),
+  FunctionBody(&'a FunctionBody),
+  Rule(&'a Rule),
+  VariableDefintion(&'a VariableDefintion),
+  MatchPath(&'a MatchPath),
+  Match(&'a Match<'a>),
+  MatchBody(&'a MatchBody<'a>),
+  ExprNode(&'a ExprNode),
+  Variable(&'a Variable),
+  Literal(&'a Literal),
+  MatchPathPart(&'a MatchPathPart),
+  Method(&'a Method),
 }
 
 pub trait Spanned {
@@ -109,6 +79,11 @@ impl Contains for (Point, Point) {
 
     return self.0.column <= p.column && self.1.column >= p.column;
   }
+}
+
+#[derive(Debug, Clone)]
+pub struct FirestoreTree<'a> {
+  body: MatchBody<'a>,
 }
 
 impl<'a> FirestoreTree<'a> {
@@ -157,20 +132,22 @@ impl Function {
 
 bm_contains!(Function);
 bm_span!(Function);
+bm_to_base_model!(Function);
 
 impl<'a> Children<'a> for Function {
-  fn children(&self) -> Vec<BaseModel<'a>> {
+  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
     let mut res = self
       .parameters()
       .iter()
-      .map(|var| BaseModel::Variable(var.clone()))
+      .map(|val| val as &dyn Children<'a>)
       .collect();
 
     if self.body().is_none() {
       return res;
     }
 
-    res.push(BaseModel::FunctionBody(self.body().unwrap().clone()));
+    res.push(self.body().unwrap());
+
     res
   }
 }
@@ -208,20 +185,21 @@ impl FunctionBody {
 
 bm_contains!(FunctionBody);
 bm_span!(FunctionBody);
+bm_to_base_model!(FunctionBody);
 
 impl<'a> Children<'a> for FunctionBody {
-  fn children(&self) -> Vec<BaseModel<'a>> {
+  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
     let mut res = self
       .variable_defs()
       .iter()
-      .map(|vd| BaseModel::VariableDefintion(vd.clone()))
+      .map(|el| el as &dyn Children<'a>)
       .collect();
 
     if self.ret().is_none() {
       return res;
     }
 
-    res.push(BaseModel::ExprNode(self.ret().unwrap().clone()));
+    res.push(self.ret().unwrap());
     res
   }
 }
@@ -255,14 +233,15 @@ impl VariableDefintion {
 
 bm_contains!(VariableDefintion);
 bm_span!(VariableDefintion);
+bm_to_base_model!(VariableDefintion);
 
 impl<'a> Children<'a> for VariableDefintion {
-  fn children(&self) -> Vec<BaseModel<'a>> {
+  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
     if self.definition().is_none() {
       return vec![];
     };
 
-    vec![BaseModel::ExprNode(self.definition().unwrap().clone())]
+    vec![self.definition().unwrap()]
   }
 }
 
@@ -285,6 +264,13 @@ impl Variable {
 
 bm_contains!(Variable);
 bm_span!(Variable);
+bm_to_base_model!(Variable);
+
+impl<'a> Children<'a> for Variable {
+  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+    vec![]
+  }
+}
 
 #[derive(Debug, Clone)]
 pub struct MatchPathPart {
@@ -307,6 +293,13 @@ impl MatchPathPart {
 
 bm_contains!(MatchPathPart);
 bm_span!(MatchPathPart);
+bm_to_base_model!(MatchPathPart);
+
+impl<'a> Children<'a> for MatchPathPart {
+  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+    vec![]
+  }
+}
 
 #[derive(Debug, Clone)]
 pub enum MatchPathPartType {
@@ -346,13 +339,14 @@ impl MatchPath {
 
 bm_contains!(MatchPath);
 bm_span!(MatchPath);
+bm_to_base_model!(MatchPath);
 
 impl<'a> Children<'a> for MatchPath {
-  fn children(&self) -> Vec<BaseModel<'a>> {
+  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
     self
       .path_parts()
       .iter()
-      .map(|pp| BaseModel::MatchPathPart(pp.clone()))
+      .map(|val| val as &dyn Children<'a>)
       .collect()
   }
 }
@@ -394,16 +388,22 @@ impl<'a> Match<'a> {
 bm_contains!(Match 'a);
 bm_span!(Match 'a);
 
+impl<'a> ToBaseModel for Match<'a> {
+  fn to_base_model<'b>(&'b self) -> BaseModel<'b> {
+    BaseModel::Match(&self)
+  }
+}
+
 impl<'a> Children<'a> for Match<'a> {
-  fn children(&self) -> Vec<BaseModel<'a>> {
-    let mut res = vec![];
+  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+    let mut res: Vec<&dyn Children<'a>> = vec![];
 
     if self.path.is_some() {
-      res.push(BaseModel::MatchPath(self.path.clone().unwrap()));
+      res.push(self.path().unwrap());
     }
 
     if self.body.is_some() {
-      res.push(BaseModel::MatchBody(self.body.clone().unwrap()));
+      res.push(self.body().unwrap());
     }
 
     res
@@ -460,36 +460,29 @@ impl<'a> MatchBody<'a> {
 
 bm_contains!(MatchBody 'a);
 bm_span!(MatchBody 'a);
+impl<'a> ToBaseModel for MatchBody<'a> {
+  fn to_base_model<'b>(&'b self) -> BaseModel<'b> {
+    BaseModel::MatchBody(&self)
+  }
+}
 
 impl<'a> Children<'a> for MatchBody<'a> {
-  fn children(&self) -> Vec<BaseModel<'a>> {
-    let mut res: Vec<Vec<BaseModel<'a>>> = vec![];
+  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+    let mut res: Vec<&dyn Children<'a>> = vec![];
 
-    res.push(
-      self
-        .functions()
-        .iter()
-        .map(|func| BaseModel::Function(func.clone()))
-        .collect(),
-    );
+    for ele in self.functions() {
+      res.push(ele);
+    }
 
-    res.push(
-      self
-        .rules()
-        .iter()
-        .map(|rule| BaseModel::Rule(rule.clone()))
-        .collect(),
-    );
+    for ele in self.matches() {
+      res.push(ele);
+    }
 
-    res.push(
-      self
-        .matches()
-        .iter()
-        .map(|mtch| BaseModel::Match(mtch.clone()))
-        .collect(),
-    );
+    for ele in self.rules() {
+      res.push(ele);
+    }
 
-    res.into_iter().flatten().collect()
+    res
   }
 }
 
@@ -510,8 +503,15 @@ impl Method {
   }
 }
 
+impl<'a> Children<'a> for Method {
+  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+    vec![]
+  }
+}
+
 bm_contains!(Method);
 bm_span!(Method);
+bm_to_base_model!(Method);
 
 #[derive(Debug, Clone)]
 pub enum MethodType {
@@ -554,22 +554,19 @@ impl Rule {
 
 bm_span!(Rule);
 bm_contains!(Rule);
+bm_to_base_model!(Rule);
 
 impl<'a> Children<'a> for Rule {
-  fn children(&self) -> Vec<BaseModel<'a>> {
-    let mut res: Vec<BaseModel<'a>> = vec![];
+  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+    let mut res: Vec<&dyn Children<'a>> = vec![];
 
-    if self.condition.is_some() {
-      res.push(BaseModel::ExprNode(self.condition().unwrap().clone()));
+    for ele in self.methods() {
+      res.push(ele);
     }
 
-    let mut meths: Vec<BaseModel<'a>> = self
-      .methods()
-      .iter()
-      .map(|meth| BaseModel::RuleMethod(meth.clone()))
-      .collect();
-
-    res.append(&mut meths);
+    if self.condition.is_some() {
+      res.push(self.condition().unwrap());
+    }
 
     res
   }
@@ -607,6 +604,10 @@ pub struct Literal {
   literal_type: LiteralType,
 }
 
+bm_contains!(Literal);
+bm_span!(Literal);
+bm_to_base_model!(Literal);
+
 impl Literal {
   pub fn new<'a>(literal_type: LiteralType, node: Node<'a>) -> Self {
     Self {
@@ -617,8 +618,11 @@ impl Literal {
   }
 }
 
-bm_contains!(Literal);
-bm_span!(Literal);
+impl<'a> Children<'a> for Literal {
+  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+    vec![]
+  }
+}
 
 #[derive(Debug, Clone)]
 pub enum LiteralType {
@@ -671,50 +675,40 @@ impl ExprNode {
 
 bm_contains!(ExprNode);
 bm_span!(ExprNode);
+bm_to_base_model!(ExprNode);
 
 impl<'a> Children<'a> for ExprNode {
-  fn children(&self) -> Vec<BaseModel<'a>> {
+  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
     match self.expr() {
-      Expr::Unary(_, expr_node) => expr_node.as_ref().map_or(vec![], |node| node.children()),
-      Expr::Binary(_, expr_node, expr_node1) => vec![
-        expr_node.as_ref().map_or(vec![], |node| node.children()),
-        expr_node1.as_ref().map_or(vec![], |node| node.children()),
-      ]
-      .into_iter()
-      .flatten()
-      .collect(),
-      Expr::Ternary(expr_node, expr_node1, expr_node2) => vec![
-        expr_node.as_ref().map_or(vec![], |node| node.children()),
-        expr_node1.as_ref().map_or(vec![], |node| node.children()),
-        expr_node2.as_ref().map_or(vec![], |node| node.children()),
-      ]
-      .into_iter()
-      .flatten()
-      .collect(),
-      Expr::Member(expr_node, expr_node1) => vec![
-        expr_node.as_ref().map_or(vec![], |node| node.children()),
-        expr_node1.as_ref().map_or(vec![], |node| node.children()),
-      ]
-      .into_iter()
-      .flatten()
-      .collect(),
-      Expr::Indexing(expr_node, expr_node1) => vec![
-        expr_node.as_ref().map_or(vec![], |node| node.children()),
-        expr_node1.as_ref().map_or(vec![], |node| node.children()),
-      ]
-      .into_iter()
-      .flatten()
-      .collect(),
+      Expr::Unary(_, expr_node) => resolve_expr_nest(vec![expr_node]),
+      Expr::Binary(_, expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
+      Expr::Ternary(expr_node, expr_node1, expr_node2) => {
+        resolve_expr_nest(vec![expr_node, expr_node1, expr_node2])
+      }
+      Expr::Member(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
+      Expr::Indexing(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::FunctionCall(name, function_argument) => match function_argument {
         // Todo path segments to base models
         Some(FunctionArgument::Path(path)) => vec![],
         Some(FunctionArgument::ExprList(vec)) => {
-          vec.iter().map(|expr| expr.children()).flatten().collect()
+          vec.iter().map(|el| el as &dyn Children<'a>).collect()
         }
         None => vec![],
       },
-      Expr::Literal(literal) => vec![BaseModel::Literal(literal.clone())],
-      Expr::Variable(variable) => vec![BaseModel::Variable(variable.clone())],
+      Expr::Literal(literal) => vec![literal],
+      Expr::Variable(variable) => vec![variable],
+      _ => vec![],
     }
   }
+}
+
+fn resolve_expr_nest<'a>(expr_node: Vec<&'a Option<Box<ExprNode>>>) -> Vec<&'a dyn Children<'a>> {
+  expr_node
+    .into_iter()
+    .map(|el| {
+      el.as_ref()
+        .map_or_else(|| vec![], |node| vec![node.as_ref() as &dyn Children<'a>])
+    })
+    .flatten()
+    .collect()
 }
