@@ -2,10 +2,10 @@
 
 typedef struct TSLanguage TSLanguage;
 
-TSLanguage *tree_sitter_firestore_rules(void);
+TSLanguage *tree_sitter_firestore_rules_language_parser(void);
 
 static PyObject* _binding_language(PyObject *Py_UNUSED(self), PyObject *Py_UNUSED(args)) {
-    return PyCapsule_New(tree_sitter_firestore_rules(), "tree_sitter.Language", NULL);
+    return PyCapsule_New(tree_sitter_firestore_rules_language_parser(), "tree_sitter.Language", NULL);
 }
 
 static PyMethodDef methods[] = {

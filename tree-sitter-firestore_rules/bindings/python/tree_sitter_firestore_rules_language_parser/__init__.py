@@ -1,4 +1,4 @@
-"""FirestoreRules grammar for tree-sitter"""
+"""Parser for the Firestore Rules Language"""
 
 from importlib.resources import files as _files
 
