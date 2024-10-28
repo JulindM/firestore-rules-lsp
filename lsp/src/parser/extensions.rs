@@ -20,18 +20,16 @@ impl ErrorNode {
 }
 
 #[derive(Debug)]
-pub struct EvaluatedTree<'a> {
-  tree: FirestoreTree<'a>,
+pub struct EvaluatedTree {
+  tree: FirestoreTree,
   error_nodes: Vec<ErrorNode>,
-  definitions: Vec<DefinitionType>,
 }
 
-impl<'a> EvaluatedTree<'a> {
-  pub fn new(tree: FirestoreTree<'a>, errors: Vec<ErrorNode>) -> Self {
+impl EvaluatedTree {
+  pub fn new(tree: FirestoreTree, errors: Vec<ErrorNode>) -> Self {
     Self {
       tree: tree.clone(),
       error_nodes: errors,
-      definitions: calculate_definitions(&tree),
     }
   }
 
@@ -39,12 +37,8 @@ impl<'a> EvaluatedTree<'a> {
     &self.error_nodes
   }
 
-  pub fn tree(&self) -> &FirestoreTree<'a> {
+  pub fn tree(&self) -> &FirestoreTree {
     &self.tree
-  }
-
-  pub fn definitions(&self) -> &[DefinitionType] {
-    &self.definitions
   }
 }
 
@@ -55,36 +49,28 @@ pub enum DefinitionType {
   GlobalVariables(String),
 }
 
-fn is_definition<'a>(field: BaseModel<'a>) -> Option<DefinitionType> {
-  match field {
-    BaseModel::Function(function) => Some(DefinitionType::Function(function.clone())),
-    BaseModel::VariableDefintion(variable_defintion) => {
-      Some(DefinitionType::Variable(variable_defintion.clone()))
-    }
-    _ => None,
-  }
-}
-fn calculate_definitions<'a>(tree: &FirestoreTree<'a>) -> Vec<DefinitionType> {
-  filter_children(tree.body(), &is_definition)
-}
-
 pub fn get_lowest_denominator<'a>(
   position: Point,
   nestable: &'a dyn Children<'a>,
-) -> Option<BaseModel<'a>> {
+) -> Vec<BaseModel<'a>> {
   if !nestable.contains(position) {
-    return None;
+    return vec![];
   }
 
-  let children = nestable.children();
+  let mut res = vec![nestable.to_base_model()];
 
+  let children = nestable.children();
   let child_hit = children.into_iter().find(|el| el.contains(position));
 
   if child_hit.is_none() {
-    return Some(nestable.to_base_model());
+    return res;
   }
 
-  get_lowest_denominator(position, child_hit.unwrap())
+  let mut inner_hit = get_lowest_denominator(position, child_hit.unwrap());
+
+  res.append(&mut inner_hit);
+
+  res
 }
 
 pub fn filter_children<'a, FRes>(

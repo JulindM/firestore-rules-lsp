@@ -16,7 +16,7 @@ use super::{
 const SERVICE_NAME: &str = "service_name";
 const ROOT_MATCH: &str = "match_body";
 
-pub fn evaluate_tree<'a>(tree: Tree, source_bytes: &[u8]) -> Result<EvaluatedTree<'a>, String> {
+pub fn evaluate_tree<'a>(tree: Tree, source_bytes: &[u8]) -> Result<EvaluatedTree, String> {
   let source_node = tree.root_node();
 
   if source_node.kind() != "source_file" {
@@ -57,10 +57,10 @@ pub fn evaluate_tree<'a>(tree: Tree, source_bytes: &[u8]) -> Result<EvaluatedTre
 }
 
 fn parse_match_body<'a, 'b>(
-  curr_match_parent: Option<&'a Match<'a>>,
+  curr_match_parent: Option<&'a Match>,
   node: Node<'b>,
   source_bytes: &[u8],
-) -> (MatchBody<'a>, Vec<ErrorNode>) {
+) -> (MatchBody, Vec<ErrorNode>) {
   let mut matches = vec![];
   let mut functions = vec![];
   let mut rules = vec![];
@@ -95,10 +95,10 @@ fn parse_match_body<'a, 'b>(
 }
 
 fn parse_match_def<'a, 'b>(
-  curr_parent_match: Option<&'a Match<'a>>,
+  curr_parent_match: Option<&'a Match>,
   node: Node<'b>,
   source_bytes: &[u8],
-) -> (Match<'a>, Vec<ErrorNode>) {
+) -> (Match, Vec<ErrorNode>) {
   let mut path = None;
   let mut body = None;
   let mut level_errors = vec![];
@@ -120,10 +120,7 @@ fn parse_match_def<'a, 'b>(
       _ => return,
     });
 
-  (
-    Match::new(curr_parent_match, path, body, node),
-    level_errors,
-  )
+  (Match::new(path, body, node), level_errors)
 }
 
 fn parse_function<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Function, Vec<ErrorNode>) {

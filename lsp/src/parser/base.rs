@@ -46,13 +46,32 @@ pub enum BaseModel<'a> {
   Rule(&'a Rule),
   VariableDefintion(&'a VariableDefintion),
   MatchPath(&'a MatchPath),
-  Match(&'a Match<'a>),
-  MatchBody(&'a MatchBody<'a>),
+  Match(&'a Match),
+  MatchBody(&'a MatchBody),
   ExprNode(&'a ExprNode),
   Variable(&'a Variable),
   Literal(&'a Literal),
   MatchPathPart(&'a MatchPathPart),
   Method(&'a Method),
+}
+
+impl<'a> BaseModel<'a> {
+  pub fn type_str(&self) -> &str {
+    match self {
+      BaseModel::Function(_) => "Function",
+      BaseModel::FunctionBody(_) => "FunctionBody",
+      BaseModel::Rule(_) => "Rule",
+      BaseModel::VariableDefintion(_) => "VarDef",
+      BaseModel::MatchPath(_) => "MatchPath",
+      BaseModel::Match(_) => "Match",
+      BaseModel::MatchBody(_) => "MatchBody",
+      BaseModel::ExprNode(_) => "ExprNode",
+      BaseModel::Variable(_) => "Variable",
+      BaseModel::Literal(_) => "Literal",
+      BaseModel::MatchPathPart(_) => "MatchPathPart",
+      BaseModel::Method(_) => "Method",
+    }
+  }
 }
 
 pub trait Spanned {
@@ -82,16 +101,16 @@ impl Contains for (Point, Point) {
 }
 
 #[derive(Debug, Clone)]
-pub struct FirestoreTree<'a> {
-  body: MatchBody<'a>,
+pub struct FirestoreTree {
+  body: MatchBody,
 }
 
-impl<'a> FirestoreTree<'a> {
-  pub fn new(body: MatchBody<'a>) -> Self {
+impl<'a> FirestoreTree {
+  pub fn new(body: MatchBody) -> Self {
     Self { body }
   }
 
-  pub fn body(&self) -> &MatchBody<'a> {
+  pub fn body(&self) -> &MatchBody {
     &self.body
   }
 }
@@ -352,23 +371,16 @@ impl<'a> Children<'a> for MatchPath {
 }
 
 #[derive(Debug, Clone)]
-pub struct Match<'a> {
-  parent_match: Option<&'a Match<'a>>,
-  body: Option<MatchBody<'a>>,
+pub struct Match {
+  body: Option<MatchBody>,
   path: Option<MatchPath>,
   end: Point,
   start: Point,
 }
 
-impl<'a> Match<'a> {
-  pub fn new<'b>(
-    parent_match: Option<&'a Match<'a>>,
-    path: Option<MatchPath>,
-    body: Option<MatchBody<'a>>,
-    node: Node<'b>,
-  ) -> Self {
+impl Match {
+  pub fn new<'b>(path: Option<MatchPath>, body: Option<MatchBody>, node: Node<'b>) -> Self {
     Self {
-      parent_match,
       path,
       body,
       start: node.start_position(),
@@ -380,21 +392,21 @@ impl<'a> Match<'a> {
     self.path.as_ref()
   }
 
-  pub fn body(&self) -> Option<&MatchBody<'a>> {
+  pub fn body(&self) -> Option<&MatchBody> {
     self.body.as_ref()
   }
 }
 
-bm_contains!(Match 'a);
-bm_span!(Match 'a);
+bm_contains!(Match);
+bm_span!(Match);
 
-impl<'a> ToBaseModel for Match<'a> {
+impl<'a> ToBaseModel for Match {
   fn to_base_model<'b>(&'b self) -> BaseModel<'b> {
     BaseModel::Match(&self)
   }
 }
 
-impl<'a> Children<'a> for Match<'a> {
+impl<'a> Children<'a> for Match {
   fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
     let mut res: Vec<&dyn Children<'a>> = vec![];
 
@@ -411,18 +423,18 @@ impl<'a> Children<'a> for Match<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct MatchBody<'a> {
+pub struct MatchBody {
   functions: Vec<Function>,
-  matches: Vec<Match<'a>>,
+  matches: Vec<Match>,
   rules: Vec<Rule>,
   start: Point,
   end: Point,
 }
 
-impl<'a> MatchBody<'a> {
+impl MatchBody {
   pub fn new<'b>(
     functions: Vec<Function>,
-    matches: Vec<Match<'a>>,
+    matches: Vec<Match>,
     rules: Vec<Rule>,
     node: Node<'b>,
   ) -> Self {
@@ -435,21 +447,11 @@ impl<'a> MatchBody<'a> {
     }
   }
 
-  pub(crate) fn empty(node: Node<'a>) -> Self {
-    Self {
-      functions: vec![],
-      matches: vec![],
-      rules: vec![],
-      start: node.start_position(),
-      end: node.end_position(),
-    }
-  }
-
   pub fn functions(&self) -> &[Function] {
     &self.functions
   }
 
-  pub fn matches(&self) -> &[Match<'a>] {
+  pub fn matches(&self) -> &[Match] {
     &self.matches
   }
 
@@ -458,15 +460,15 @@ impl<'a> MatchBody<'a> {
   }
 }
 
-bm_contains!(MatchBody 'a);
-bm_span!(MatchBody 'a);
-impl<'a> ToBaseModel for MatchBody<'a> {
+bm_contains!(MatchBody);
+bm_span!(MatchBody);
+impl<'a> ToBaseModel for MatchBody {
   fn to_base_model<'b>(&'b self) -> BaseModel<'b> {
     BaseModel::MatchBody(&self)
   }
 }
 
-impl<'a> Children<'a> for MatchBody<'a> {
+impl<'a> Children<'a> for MatchBody {
   fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
     let mut res: Vec<&dyn Children<'a>> = vec![];
 

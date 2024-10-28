@@ -34,10 +34,10 @@ pub fn start_server(port: u16, mut parser: Parser) -> Result<(), Box<dyn Error>>
   Ok(())
 }
 
-type LSPTreeStorage<'a> = HashMap<String, (EvaluatedTree<'a>, Tree)>;
+type LSPTreeStorage = HashMap<String, (EvaluatedTree, Tree)>;
 
 fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<dyn Error>> {
-  let mut evaulated_trees: LSPTreeStorage<'a> = HashMap::new();
+  let mut evaulated_trees: LSPTreeStorage = HashMap::new();
 
   for msg in &connection.receiver {
     match msg {
@@ -76,10 +76,10 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
   Ok(())
 }
 
-fn open_doc<'a>(
+fn open_doc(
   did_open: &DidOpenTextDocumentParams,
   parser: &mut Parser,
-  evaulated_trees: &mut LSPTreeStorage<'a>,
+  evaulated_trees: &mut LSPTreeStorage,
 ) {
   // FIXME What if one these returns none
   let content = did_open.text_document.text.clone();
@@ -93,10 +93,10 @@ fn open_doc<'a>(
   );
 }
 
-fn change_doc<'a>(
+fn change_doc(
   did_change: &DidChangeTextDocumentParams,
   parser: &mut Parser,
-  evaulated_trees: &mut LSPTreeStorage<'a>,
+  evaulated_trees: &mut LSPTreeStorage,
 ) {
   // FIXME What if one these returns none
   let (_, old_tree) = evaulated_trees.find_ver(did_change.text_document.clone());
@@ -112,23 +112,29 @@ fn change_doc<'a>(
   );
 }
 
-fn handle_hover<'a>(
+fn handle_hover(
   hover_r: (RequestId, HoverParams),
-  evaulated_trees: &LSPTreeStorage<'a>,
+  evaulated_trees: &LSPTreeStorage,
   req: Request,
   connection: &Connection,
 ) {
   let hover_params = hover_r.1.text_document_position_params;
   let (ev_tree, _) = evaulated_trees.find(hover_params.text_document);
 
-  let type_info =
-    get_lowest_denominator(to_point(hover_params.position), ev_tree.tree().body()).unwrap();
+  let traversal_list =
+    get_lowest_denominator(to_point(hover_params.position), ev_tree.tree().body());
+
+  let traversal: String = traversal_list
+    .into_iter()
+    .map(|v| v.type_str().to_string())
+    .collect::<Vec<String>>()
+    .join("->");
 
   let hover = Hover {
     contents: HoverContents::Markup(MarkupContent {
       kind: MarkupKind::PlainText,
       // TODO markdown
-      value: format!("{type_info:?}"),
+      value: format!("{traversal:?}"),
     }),
     range: None,
   };
@@ -156,15 +162,15 @@ where
 }
 
 trait Find {
-  fn find<'a>(&'a self, text_document: TextDocumentIdentifier) -> &(EvaluatedTree<'a>, Tree);
+  fn find<'a>(&'a self, text_document: TextDocumentIdentifier) -> &'a (EvaluatedTree, Tree);
   fn find_ver<'a>(
     &'a self,
     text_document: VersionedTextDocumentIdentifier,
-  ) -> &(EvaluatedTree<'a>, Tree);
+  ) -> &'a (EvaluatedTree, Tree);
 }
 
-impl<'b> Find for LSPTreeStorage<'b> {
-  fn find<'a>(&'a self, text_document: TextDocumentIdentifier) -> &(EvaluatedTree<'a>, Tree) {
+impl Find for LSPTreeStorage {
+  fn find<'a>(&'a self, text_document: TextDocumentIdentifier) -> &'a (EvaluatedTree, Tree) {
     let id = text_document.uri.as_str();
     &self[id]
   }
@@ -172,7 +178,7 @@ impl<'b> Find for LSPTreeStorage<'b> {
   fn find_ver<'a>(
     &'a self,
     text_document: VersionedTextDocumentIdentifier,
-  ) -> &(EvaluatedTree<'a>, Tree) {
+  ) -> &'a (EvaluatedTree, Tree) {
     let id = text_document.uri.as_str();
     &self[id]
   }
