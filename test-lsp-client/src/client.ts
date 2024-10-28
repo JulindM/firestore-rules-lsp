@@ -61,30 +61,58 @@ async function run(): Promise<void> {
       version: 0,
     },
   });
+  /* 
+    //----
+  
+    let hover1 = await connection.sendRequest(HoverRequest.type, {
+      textDocument: {
+        uri: uri,
+      },
+      position: {
+        line: 32,
+        character: 44,
+      },
+    } as HoverParams);
+  
+    log(hover1);
+  
+    let gdef1 = await connection.sendRequest(DefinitionRequest.type, {
+      textDocument: {
+        uri: uri,
+      },
+      position: {
+        line: 32,
+        character: 44,
+      },
+    });
+  
+    log(gdef1);
+  
+    //----
+  
+    let hover2 = await connection.sendRequest(HoverRequest.type, {
+      textDocument: {
+        uri: uri,
+      },
+      position: {
+        line: 24,
+        character: 22,
+      },
+    } as HoverParams);
+  
+    log(hover2); */
 
-  let hover = await connection.sendRequest(HoverRequest.type, {
+  let gdef2 = await connection.sendRequest(DefinitionRequest.type, {
     textDocument: {
       uri: uri,
     },
     position: {
-      line: 32,
-      character: 44,
-    },
-  } as HoverParams);
-
-  log(hover);
-
-  let gdef = await connection.sendRequest(DefinitionRequest.type, {
-    textDocument: {
-      uri: uri,
-    },
-    position: {
-      line: 32,
-      character: 44,
+      line: 24,
+      character: 22,
     },
   });
 
-  log(gdef);
+  log(gdef2);
 
 
   await connection.sendRequest(ShutdownRequest.type);

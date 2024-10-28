@@ -1,8 +1,6 @@
 use tree_sitter::{Node, Point};
 
-use super::base::{
-  BaseModel, Children, Expr, ExprNode, FirestoreTree, Function, ToBaseModel, VariableDefintion,
-};
+use super::base::{BaseModel, Children, Expr, FirestoreTree, MatchPathPartType, ToBaseModel};
 
 #[derive(Debug)]
 pub struct ErrorNode {
@@ -44,13 +42,6 @@ impl EvaluatedTree {
   }
 }
 
-#[derive(Debug)]
-pub enum DefinitionType {
-  Function(Function),
-  Variable(VariableDefintion),
-  GlobalVariables(String),
-}
-
 pub fn get_lowest_denominator<'a>(
   position: Point,
   nestable: &'a dyn Children<'a>,
@@ -75,24 +66,6 @@ pub fn get_lowest_denominator<'a>(
   res
 }
 
-pub fn filter_children<'a, FRes>(
-  field: &'a dyn Children<'a>,
-  filter: &dyn Fn(BaseModel<'a>) -> Option<FRes>,
-) -> Vec<FRes> {
-  let mut result = vec![];
-
-  let children = field.children();
-
-  if !children.is_empty() {
-    for child in children.into_iter() {
-      let mut child_res = filter_children(child, filter);
-      result.append(&mut child_res);
-    }
-  }
-
-  result
-}
-
 pub fn try_find_definition<'a>(traversal: Vec<BaseModel<'a>>) -> Option<BaseModel<'a>> {
   if traversal.len() < 2 {
     return None;
@@ -112,6 +85,33 @@ pub fn try_find_definition<'a>(traversal: Vec<BaseModel<'a>>) -> Option<BaseMode
         .flatten()
         .find(|f| f.name().eq(fname))
         .and_then(|f| Some(f.to_base_model())),
+      Expr::Variable(var) => left
+        .iter()
+        .filter_map(|el| match el {
+          BaseModel::Match(mb) => mb.path().map(|p| {
+            p.path_parts()
+              .iter()
+              .filter(|p| *p.pathpart_type() == MatchPathPartType::SinglePath)
+              .map(|val| val.to_base_model())
+              .collect::<Vec<BaseModel<'a>>>()
+          }),
+          BaseModel::FunctionBody(fb) if fb.variable_defs().len() > 0 => Some(
+            fb.variable_defs()
+              .iter()
+              .map(|vd| vd.to_base_model())
+              .collect::<Vec<BaseModel<'a>>>(),
+          ),
+          _ => None,
+        })
+        .flatten()
+        .find(|definition| {
+          println!("{:?}", definition);
+          match definition {
+            BaseModel::VariableDefintion(vd) => vd.name().eq(var.name()),
+            BaseModel::MatchPathPart(mpp) => mpp.value().eq(var.name()),
+            _ => false,
+          }
+        }),
       _ => None,
     },
     _ => None,

@@ -8,7 +8,7 @@ service cloud.firestore {
     return 1.12 + 3 + (2 * get(/hello/my/$(friend)));
   }
 
-  match /path {
+  match /path/{id} {
     allow read;
 
     function fun(arg1) {
@@ -22,7 +22,7 @@ service cloud.firestore {
     }
 
     match /path/one {
-      allow write: if var.field;
+      allow write: if id;
       allow delete: if var[3];
     }
 

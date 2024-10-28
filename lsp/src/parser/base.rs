@@ -311,6 +311,10 @@ impl Variable {
       end: node.end_position(),
     }
   }
+
+  pub fn name(&self) -> &str {
+    &self.name
+  }
 }
 
 bm_contains!(Variable);
@@ -340,6 +344,14 @@ impl MatchPathPart {
       end: node.end_position(),
     }
   }
+
+  pub fn pathpart_type(&self) -> &MatchPathPartType {
+    &self.pathpart_type
+  }
+
+  pub fn value(&self) -> &str {
+    &self.value
+  }
 }
 
 bm_contains!(MatchPathPart);
@@ -352,7 +364,7 @@ impl<'a> Children<'a> for MatchPathPart {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MatchPathPartType {
   Collection,
   SinglePath,
@@ -593,10 +605,6 @@ bm_to_base_model!(Rule);
 impl<'a> Children<'a> for Rule {
   fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
     let mut res: Vec<&dyn Children<'a>> = vec![];
-
-    for ele in self.methods() {
-      res.push(ele);
-    }
 
     if self.condition.is_some() {
       res.push(self.condition().unwrap());
