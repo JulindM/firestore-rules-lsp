@@ -7,8 +7,9 @@ use std::{collections::HashMap, error::Error};
 use tree_sitter::{Parser, Point, Tree};
 
 use crate::parser::{
+  base::BaseModel,
   evaluation::evaluate_tree,
-  extensions::{get_lowest_denominator, EvaluatedTree},
+  extensions::{get_lowest_denominator, try_find_definition, EvaluatedTree},
 };
 
 pub fn start_server(port: u16, mut parser: Parser) -> Result<(), Box<dyn Error>> {
@@ -19,6 +20,7 @@ pub fn start_server(port: u16, mut parser: Parser) -> Result<(), Box<dyn Error>>
   let server_capabilities = serde_json::to_value(&ServerCapabilities {
     text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
     hover_provider: Some(HoverProviderCapability::Simple(true)),
+    definition_provider: Some(OneOf::Left(true)),
     ..Default::default()
   })
   .unwrap();
@@ -52,6 +54,11 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
 
         if let Ok(hover_r) = cast_req::<HoverRequest>(&req) {
           handle_hover(hover_r, &evaulated_trees, req, &connection);
+          continue;
+        }
+
+        if let Ok(definition_r) = cast_req::<GotoDefinition>(&req) {
+          handle_go_to_definition(definition_r, &evaulated_trees, req, &connection);
           continue;
         }
       }
@@ -112,6 +119,42 @@ fn change_doc(
   );
 }
 
+fn handle_go_to_definition(
+  definition_r: (RequestId, GotoDefinitionParams),
+  evaulated_trees: &HashMap<String, (EvaluatedTree, Tree)>,
+  req: Request,
+  connection: &Connection,
+) {
+  let definition_param = definition_r.1.text_document_position_params;
+  let (ev_tree, _) = evaulated_trees.find(&definition_param.text_document);
+
+  let traversal =
+    get_lowest_denominator(to_point(definition_param.position), ev_tree.tree().body());
+
+  let definition = try_find_definition(traversal);
+
+  if definition.is_none() {
+    let _ = connection.sender.send(Message::Response(Response {
+      id: req.id,
+      result: None,
+      error: None,
+    }));
+    return;
+  }
+
+  let span = definition.unwrap().span();
+
+  let definition_resp = GotoDefinitionResponse::Scalar(Location::new(
+    definition_param.text_document.uri,
+    Range::new(to_position(span.0), to_position(span.1)),
+  ));
+
+  let msg = Response::new_ok::<GotoDefinitionResponse>(req.id, definition_resp);
+
+  // FIXME What if this errors out
+  let _ = connection.sender.send(Message::Response(msg));
+}
+
 fn handle_hover(
   hover_r: (RequestId, HoverParams),
   evaulated_trees: &LSPTreeStorage,
@@ -119,7 +162,7 @@ fn handle_hover(
   connection: &Connection,
 ) {
   let hover_params = hover_r.1.text_document_position_params;
-  let (ev_tree, _) = evaulated_trees.find(hover_params.text_document);
+  let (ev_tree, _) = evaulated_trees.find(&hover_params.text_document);
 
   let traversal_list =
     get_lowest_denominator(to_point(hover_params.position), ev_tree.tree().body());
@@ -162,7 +205,7 @@ where
 }
 
 trait Find {
-  fn find<'a>(&'a self, text_document: TextDocumentIdentifier) -> &'a (EvaluatedTree, Tree);
+  fn find<'a>(&'a self, text_document: &TextDocumentIdentifier) -> &'a (EvaluatedTree, Tree);
   fn find_ver<'a>(
     &'a self,
     text_document: VersionedTextDocumentIdentifier,
@@ -170,7 +213,7 @@ trait Find {
 }
 
 impl Find for LSPTreeStorage {
-  fn find<'a>(&'a self, text_document: TextDocumentIdentifier) -> &'a (EvaluatedTree, Tree) {
+  fn find<'a>(&'a self, text_document: &TextDocumentIdentifier) -> &'a (EvaluatedTree, Tree) {
     let id = text_document.uri.as_str();
     &self[id]
   }
@@ -188,5 +231,12 @@ fn to_point(position: Position) -> Point {
   Point::new(
     position.line.try_into().unwrap(),
     position.character.try_into().unwrap(),
+  )
+}
+
+fn to_position(point: Point) -> Position {
+  Position::new(
+    point.row.try_into().unwrap(),
+    point.column.try_into().unwrap(),
   )
 }

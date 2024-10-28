@@ -1,3 +1,5 @@
+use std::fmt::Binary;
+
 use tree_sitter::{Node, Point};
 
 macro_rules! bm_span(
@@ -65,11 +67,37 @@ impl<'a> BaseModel<'a> {
       BaseModel::MatchPath(_) => "MatchPath",
       BaseModel::Match(_) => "Match",
       BaseModel::MatchBody(_) => "MatchBody",
-      BaseModel::ExprNode(_) => "ExprNode",
+      BaseModel::ExprNode(node) => match node.expr() {
+        Expr::Unary(_, _) => "Unary",
+        Expr::Binary(_, _, _) => "Binary",
+        Expr::Ternary(_, _, _) => "Ternary",
+        Expr::Member(_, _) => "Member",
+        Expr::Indexing(_, _) => "Indexing",
+        Expr::FunctionCall(_, _) => "FunctionCall",
+        Expr::Literal(_) => "Literal",
+        Expr::Variable(_) => "Variable",
+      },
       BaseModel::Variable(_) => "Variable",
       BaseModel::Literal(_) => "Literal",
       BaseModel::MatchPathPart(_) => "MatchPathPart",
       BaseModel::Method(_) => "Method",
+    }
+  }
+
+  pub fn span(&self) -> (Point, Point) {
+    match self {
+      BaseModel::Function(f) => f.span(),
+      BaseModel::FunctionBody(fb) => fb.span(),
+      BaseModel::Rule(r) => r.span(),
+      BaseModel::VariableDefintion(vd) => vd.span(),
+      BaseModel::MatchPath(mp) => mp.span(),
+      BaseModel::Match(m) => m.span(),
+      BaseModel::MatchBody(mb) => mb.span(),
+      BaseModel::ExprNode(en) => en.span(),
+      BaseModel::Variable(v) => v.span(),
+      BaseModel::Literal(l) => l.span(),
+      BaseModel::MatchPathPart(mpp) => mpp.span(),
+      BaseModel::Method(m) => m.span(),
     }
   }
 }
@@ -146,6 +174,10 @@ impl Function {
 
   pub fn body(&self) -> Option<&FunctionBody> {
     self.body.as_ref()
+  }
+
+  pub fn name(&self) -> &str {
+    &self.name
   }
 }
 

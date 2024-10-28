@@ -30,7 +30,7 @@ service cloud.firestore {
       allow read;
       allow create: if true;
       allow update, get: if var.field.method().again(val["hello"]); //comment here
-      allow update: if var.field.method().again(val["hello"]).field;
+      allow update: if var.field.method().name("hello").field;
       allow delete: if var.indexable_field[3];
     }
 
@@ -40,7 +40,7 @@ service cloud.firestore {
     }
   }
 
-  match /path {
+  match /path/{} {
     allow get: if read(c);
   }
 }

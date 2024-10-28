@@ -1,6 +1,8 @@
 use tree_sitter::{Node, Point};
 
-use super::base::{BaseModel, Children, FirestoreTree, Function, VariableDefintion};
+use super::base::{
+  BaseModel, Children, Expr, ExprNode, FirestoreTree, Function, ToBaseModel, VariableDefintion,
+};
 
 #[derive(Debug)]
 pub struct ErrorNode {
@@ -89,4 +91,29 @@ pub fn filter_children<'a, FRes>(
   }
 
   result
+}
+
+pub fn try_find_definition<'a>(traversal: Vec<BaseModel<'a>>) -> Option<BaseModel<'a>> {
+  if traversal.len() < 2 {
+    return None;
+  }
+
+  let (left, child) = traversal.split_at(traversal.len() - 1);
+
+  match child.first().unwrap() {
+    BaseModel::ExprNode(node) => match node.expr() {
+      Expr::FunctionCall(fname, _) => left
+        .iter()
+        .filter_map(|el| match el {
+          BaseModel::MatchBody(mb) => Some(mb),
+          _ => None,
+        })
+        .map(|el| el.functions())
+        .flatten()
+        .find(|f| f.name().eq(fname))
+        .and_then(|f| Some(f.to_base_model())),
+      _ => None,
+    },
+    _ => None,
+  }
 }

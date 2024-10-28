@@ -4,6 +4,7 @@ import { exit } from "process";
 import { createServerSocketTransport } from "vscode-jsonrpc/node";
 import {
   createProtocolConnection,
+  DefinitionRequest,
   DidOpenTextDocumentNotification,
   ExitNotification,
   HoverParams,
@@ -61,17 +62,30 @@ async function run(): Promise<void> {
     },
   });
 
-  let result = await connection.sendRequest(HoverRequest.type, {
+  let hover = await connection.sendRequest(HoverRequest.type, {
     textDocument: {
       uri: uri,
     },
     position: {
-      line: 18,
-      character: 11,
+      line: 32,
+      character: 44,
     },
   } as HoverParams);
 
-  log(result);
+  log(hover);
+
+  let gdef = await connection.sendRequest(DefinitionRequest.type, {
+    textDocument: {
+      uri: uri,
+    },
+    position: {
+      line: 32,
+      character: 44,
+    },
+  });
+
+  log(gdef);
+
 
   await connection.sendRequest(ShutdownRequest.type);
   log("Shutdown request sent");
