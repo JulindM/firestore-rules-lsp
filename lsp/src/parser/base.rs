@@ -348,7 +348,16 @@ impl MatchPathPart {
   }
 
   pub fn value(&self) -> &str {
-    &self.value
+    match self.pathpart_type {
+      MatchPathPartType::SinglePath => self
+        .value
+        .strip_prefix("/{")
+        .unwrap()
+        .strip_suffix("}")
+        .unwrap(),
+      // TODO Handle multi path parts
+      _ => self.value.as_ref(),
+    }
   }
 }
 
@@ -735,8 +744,6 @@ impl<'a> Children<'a> for ExprNode {
         }
         None => vec![],
       },
-      Expr::Literal(literal) => vec![literal],
-      Expr::Variable(variable) => vec![variable],
       _ => vec![],
     }
   }

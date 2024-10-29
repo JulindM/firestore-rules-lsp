@@ -85,7 +85,7 @@ pub fn try_find_definition<'a>(traversal: Vec<BaseModel<'a>>) -> Option<BaseMode
         .flatten()
         .find(|f| f.name().eq(fname))
         .and_then(|f| Some(f.to_base_model())),
-      Expr::Variable(var) => left
+      Expr::Variable(ident) => left
         .iter()
         .filter_map(|el| match el {
           BaseModel::Match(mb) => mb.path().map(|p| {
@@ -104,13 +104,10 @@ pub fn try_find_definition<'a>(traversal: Vec<BaseModel<'a>>) -> Option<BaseMode
           _ => None,
         })
         .flatten()
-        .find(|definition| {
-          println!("{:?}", definition);
-          match definition {
-            BaseModel::VariableDefintion(vd) => vd.name().eq(var.name()),
-            BaseModel::MatchPathPart(mpp) => mpp.value().eq(var.name()),
-            _ => false,
-          }
+        .find(|definition| match definition {
+          BaseModel::VariableDefintion(vd) => vd.name().eq(ident.name()),
+          BaseModel::MatchPathPart(mpp) => mpp.value().eq(ident.name()),
+          _ => false,
         }),
       _ => None,
     },
