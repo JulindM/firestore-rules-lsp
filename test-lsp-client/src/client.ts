@@ -12,6 +12,8 @@ import {
   InitializedNotification,
   InitializeParams,
   InitializeRequest,
+  SemanticTokens,
+  SemanticTokensRequest,
   ShutdownRequest,
 } from "vscode-languageserver-protocol";
 
@@ -94,7 +96,7 @@ async function run(): Promise<void> {
     },
     position: {
       line: 24,
-      character: 22,
+      character: 23,
     },
   } as HoverParams);
 
@@ -106,12 +108,19 @@ async function run(): Promise<void> {
     },
     position: {
       line: 24,
-      character: 22,
+      character: 23,
     },
   });
 
   log(gdef2);
 
+  let tokenize = await connection.sendRequest(SemanticTokensRequest.type, {
+    textDocument: {
+      uri: uri,
+    },
+  });
+
+  log(tokenize);
 
   await connection.sendRequest(ShutdownRequest.type);
   log("Shutdown request sent");

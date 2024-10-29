@@ -6,10 +6,12 @@ use request::*;
 use std::{collections::HashMap, error::Error};
 use tree_sitter::{Parser, Point, Tree};
 
-use crate::parser::{
-  base::BaseModel,
-  evaluation::evaluate_tree,
-  extensions::{get_lowest_denominator, try_find_definition, EvaluatedTree},
+use crate::{
+  parser::{evaluation::evaluate_tree, extensions::EvaluatedTree},
+  provider::{
+    analysis::{get_lowest_denominator, try_find_definition},
+    tokenizer::{get_used_semantic_token_modifiers, get_used_semantic_token_types, tokenize},
+  },
 };
 
 pub fn start_server(port: u16, mut parser: Parser) -> Result<(), Box<dyn Error>> {
@@ -21,6 +23,19 @@ pub fn start_server(port: u16, mut parser: Parser) -> Result<(), Box<dyn Error>>
     text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
     hover_provider: Some(HoverProviderCapability::Simple(true)),
     definition_provider: Some(OneOf::Left(true)),
+    semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
+      SemanticTokensOptions {
+        work_done_progress_options: WorkDoneProgressOptions {
+          work_done_progress: None,
+        },
+        legend: SemanticTokensLegend {
+          token_types: get_used_semantic_token_types(),
+          token_modifiers: get_used_semantic_token_modifiers(),
+        },
+        range: None,
+        full: Some(SemanticTokensFullOptions::Bool(true)),
+      },
+    )),
     ..Default::default()
   })
   .unwrap();
@@ -59,6 +74,11 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
 
         if let Ok(definition_r) = cast_req::<GotoDefinition>(&req) {
           handle_go_to_definition(definition_r, &evaulated_trees, req, &connection);
+          continue;
+        }
+
+        if let Ok(tokenize_r) = cast_req::<SemanticTokensFullRequest>(&req) {
+          handle_tokenize_request(tokenize_r, &evaulated_trees, req, &connection);
           continue;
         }
       }
@@ -134,11 +154,10 @@ fn handle_go_to_definition(
   let definition = try_find_definition(traversal);
 
   if definition.is_none() {
-    let _ = connection.sender.send(Message::Response(Response {
-      id: req.id,
-      result: None,
-      error: None,
-    }));
+    let _ = connection.sender.send(Message::Response(Response::new_ok(
+      req.id,
+      "No definition found",
+    )));
     return;
   }
 
@@ -183,6 +202,28 @@ fn handle_hover(
   };
 
   let msg = Response::new_ok::<Hover>(req.id, hover);
+
+  // FIXME What if this errors out
+  let _ = connection.sender.send(Message::Response(msg));
+}
+
+fn handle_tokenize_request(
+  tokenize_r: (RequestId, SemanticTokensParams),
+  evaulated_trees: &HashMap<String, (EvaluatedTree, Tree)>,
+  req: Request,
+  connection: &Connection,
+) -> () {
+  let tokenize_params = tokenize_r.1;
+  let (_, tree) = evaulated_trees.find(&tokenize_params.text_document);
+
+  let tokenization_result = tokenize(&tree.root_node());
+
+  let tokenize_msg = SemanticTokensResult::Tokens(SemanticTokens {
+    result_id: None,
+    data: tokenization_result,
+  });
+
+  let msg = Response::new_ok::<SemanticTokensResult>(req.id, tokenize_msg);
 
   // FIXME What if this errors out
   let _ = connection.sender.send(Message::Response(msg));

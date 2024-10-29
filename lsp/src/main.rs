@@ -1,6 +1,7 @@
 #![deny(elided_lifetimes_in_paths)]
 
 mod parser;
+mod provider;
 mod server;
 
 use std::error::Error;
