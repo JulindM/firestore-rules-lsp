@@ -353,7 +353,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "identifier"
+          "name": "variable"
         },
         {
           "type": "SYMBOL",
