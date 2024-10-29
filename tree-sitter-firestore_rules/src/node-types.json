@@ -341,6 +341,11 @@
     "fields": {}
   },
   {
+    "type": "mult_op",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "multiplication",
     "named": true,
     "fields": {},
@@ -351,14 +356,13 @@
         {
           "type": "expr",
           "named": true
+        },
+        {
+          "type": "mult_op",
+          "named": true
         }
       ]
     }
-  },
-  {
-    "type": "negation",
-    "named": false,
-    "fields": {}
   },
   {
     "type": "param",
@@ -533,11 +537,6 @@
         }
       ]
     }
-  },
-  {
-    "type": "substraction",
-    "named": false,
-    "fields": {}
   },
   {
     "type": "ternary",
@@ -744,6 +743,10 @@
     "named": false
   },
   {
+    "type": "function_name",
+    "named": false
+  },
+  {
     "type": "get",
     "named": false
   },
@@ -774,10 +777,6 @@
   {
     "type": "multi_path_seg",
     "named": true
-  },
-  {
-    "type": "name",
-    "named": false
   },
   {
     "type": "null",

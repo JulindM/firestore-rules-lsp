@@ -19,18 +19,12 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "TOKEN",
-          "content": {
-            "type": "STRING",
-            "value": "service"
-          }
+          "type": "STRING",
+          "value": "service"
         },
         {
-          "type": "TOKEN",
-          "content": {
-            "type": "STRING",
-            "value": "cloud.firestore"
-          }
+          "type": "STRING",
+          "value": "cloud.firestore"
         }
       ]
     },
@@ -452,16 +446,11 @@
             "type": "SEQ",
             "members": [
               {
-                "type": "ALIAS",
+                "type": "REPEAT1",
                 "content": {
-                  "type": "REPEAT1",
-                  "content": {
-                    "type": "STRING",
-                    "value": "!"
-                  }
-                },
-                "named": false,
-                "value": "negation"
+                  "type": "STRING",
+                  "value": "!"
+                }
               },
               {
                 "type": "SYMBOL",
@@ -473,16 +462,11 @@
             "type": "SEQ",
             "members": [
               {
-                "type": "ALIAS",
+                "type": "REPEAT1",
                 "content": {
-                  "type": "REPEAT1",
-                  "content": {
-                    "type": "STRING",
-                    "value": "-"
-                  }
-                },
-                "named": false,
-                "value": "substraction"
+                  "type": "STRING",
+                  "value": "-"
+                }
               },
               {
                 "type": "SYMBOL",
@@ -492,6 +476,23 @@
           }
         ]
       }
+    },
+    "mult_op": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "*"
+        },
+        {
+          "type": "STRING",
+          "value": "/"
+        },
+        {
+          "type": "STRING",
+          "value": "%"
+        }
+      ]
     },
     "multiplication": {
       "type": "PREC_LEFT",
@@ -504,21 +505,8 @@
             "name": "expr"
           },
           {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "STRING",
-                "value": "*"
-              },
-              {
-                "type": "STRING",
-                "value": "/"
-              },
-              {
-                "type": "STRING",
-                "value": "%"
-              }
-            ]
+            "type": "SYMBOL",
+            "name": "mult_op"
           },
           {
             "type": "SYMBOL",
@@ -815,7 +803,7 @@
             "name": "identifier"
           },
           "named": false,
-          "value": "name"
+          "value": "function_name"
         },
         {
           "type": "STRING",
