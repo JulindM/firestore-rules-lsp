@@ -1,5 +1,5 @@
 import { log } from "console";
-import { open, openSync, readFileSync } from "fs";
+import { readFileSync } from "fs";
 import { exit } from "process";
 import { createServerSocketTransport } from "vscode-jsonrpc/node";
 import {
@@ -13,7 +13,6 @@ import {
   InitializeParams,
   InitializeRequest,
   ShutdownRequest,
-  TextDocumentItem,
 } from "vscode-languageserver-protocol";
 
 const folder_path =
@@ -61,46 +60,45 @@ async function run(): Promise<void> {
       version: 0,
     },
   });
-  /* 
-    //----
-  
-    let hover1 = await connection.sendRequest(HoverRequest.type, {
-      textDocument: {
-        uri: uri,
-      },
-      position: {
-        line: 32,
-        character: 44,
-      },
-    } as HoverParams);
-  
-    log(hover1);
-  
-    let gdef1 = await connection.sendRequest(DefinitionRequest.type, {
-      textDocument: {
-        uri: uri,
-      },
-      position: {
-        line: 32,
-        character: 44,
-      },
-    });
-  
-    log(gdef1);
-  
-    //----
-  
-    let hover2 = await connection.sendRequest(HoverRequest.type, {
-      textDocument: {
-        uri: uri,
-      },
-      position: {
-        line: 24,
-        character: 22,
-      },
-    } as HoverParams);
-  
-    log(hover2); */
+  //----
+
+  let hover1 = await connection.sendRequest(HoverRequest.type, {
+    textDocument: {
+      uri: uri,
+    },
+    position: {
+      line: 32,
+      character: 44,
+    },
+  } as HoverParams);
+
+  log(hover1);
+
+  let gdef1 = await connection.sendRequest(DefinitionRequest.type, {
+    textDocument: {
+      uri: uri,
+    },
+    position: {
+      line: 32,
+      character: 44,
+    },
+  });
+
+  log(gdef1);
+
+  //----
+
+  let hover2 = await connection.sendRequest(HoverRequest.type, {
+    textDocument: {
+      uri: uri,
+    },
+    position: {
+      line: 24,
+      character: 22,
+    },
+  } as HoverParams);
+
+  log(hover2);
 
   let gdef2 = await connection.sendRequest(DefinitionRequest.type, {
     textDocument: {
