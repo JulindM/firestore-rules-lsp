@@ -6,9 +6,9 @@ use crate::parser::base::MethodType;
 
 use super::{
   base::{
-    Expr, ExprNode, FirestoreTree, Function, FunctionArgument, FunctionBody, Literal, LiteralType,
-    Match, MatchBody, MatchPath, MatchPathPart, MatchPathPartType, Method, Operation, PathSegment,
-    Rule, Variable, VariableDefintion,
+    Expr, ExprNode, FirestoreTree, Function, FunctionArgument, FunctionBody, Identifier, Literal,
+    LiteralType, Match, MatchBody, MatchPath, MatchPathPart, MatchPathPartType, Method, Operation,
+    PathSegment, Rule, VariableDefintion,
   },
   extensions::{ErrorNode, EvaluatedTree},
 };
@@ -136,7 +136,10 @@ fn parse_function<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Function, Vec<Err
     .for_each(|child| match child.kind() {
       _ if child.is_missing() => level_errors.push(ErrorNode::new(child, source_bytes)),
       "name" => name = child.utf8_text(source_bytes).unwrap(),
-      "param" => parms.push(Variable::new(child.utf8_text(source_bytes).unwrap(), child)),
+      "param" => parms.push(Identifier::new(
+        child.utf8_text(source_bytes).unwrap(),
+        child,
+      )),
       "function_body" => {
         let mut res = parse_function_body(child, source_bytes);
         body = Some(res.0);
@@ -402,7 +405,7 @@ fn parse_literal<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Option<ExprNode>, 
 
 fn parse_variable<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Option<ExprNode>, Vec<ErrorNode>) {
   let name = node.utf8_text(source_bytes).unwrap();
-  let variable = Variable::new(name, node);
+  let variable = Identifier::new(name, node);
 
   (Some(ExprNode::new(Expr::Variable(variable), node)), vec![])
 }

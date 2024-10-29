@@ -1,5 +1,3 @@
-use std::fmt::Binary;
-
 use tree_sitter::{Node, Point};
 
 macro_rules! bm_span(
@@ -51,7 +49,7 @@ pub enum BaseModel<'a> {
   Match(&'a Match),
   MatchBody(&'a MatchBody),
   ExprNode(&'a ExprNode),
-  Variable(&'a Variable),
+  Identifier(&'a Identifier),
   Literal(&'a Literal),
   MatchPathPart(&'a MatchPathPart),
   Method(&'a Method),
@@ -77,7 +75,7 @@ impl<'a> BaseModel<'a> {
         Expr::Literal(_) => "Literal",
         Expr::Variable(_) => "Variable",
       },
-      BaseModel::Variable(_) => "Variable",
+      BaseModel::Identifier(_) => "Identifier",
       BaseModel::Literal(_) => "Literal",
       BaseModel::MatchPathPart(_) => "MatchPathPart",
       BaseModel::Method(_) => "Method",
@@ -94,7 +92,7 @@ impl<'a> BaseModel<'a> {
       BaseModel::Match(m) => m.span(),
       BaseModel::MatchBody(mb) => mb.span(),
       BaseModel::ExprNode(en) => en.span(),
-      BaseModel::Variable(v) => v.span(),
+      BaseModel::Identifier(v) => v.span(),
       BaseModel::Literal(l) => l.span(),
       BaseModel::MatchPathPart(mpp) => mpp.span(),
       BaseModel::Method(m) => m.span(),
@@ -146,7 +144,7 @@ impl<'a> FirestoreTree {
 #[derive(Debug, Clone)]
 pub struct Function {
   name: String,
-  parameters: Vec<Variable>,
+  parameters: Vec<Identifier>,
   body: Option<FunctionBody>,
   start: Point,
   end: Point,
@@ -155,7 +153,7 @@ pub struct Function {
 impl Function {
   pub fn new<'a>(
     name: &str,
-    parameters: Vec<Variable>,
+    parameters: Vec<Identifier>,
     body: Option<FunctionBody>,
     node: Node<'a>,
   ) -> Self {
@@ -168,7 +166,7 @@ impl Function {
     }
   }
 
-  pub fn parameters(&self) -> &[Variable] {
+  pub fn parameters(&self) -> &[Identifier] {
     &self.parameters
   }
 
@@ -297,31 +295,31 @@ impl<'a> Children<'a> for VariableDefintion {
 }
 
 #[derive(Debug, Clone)]
-pub struct Variable {
-  name: String,
+pub struct Identifier {
+  value: String,
   start: Point,
   end: Point,
 }
 
-impl Variable {
+impl Identifier {
   pub fn new<'a>(name: &str, node: Node<'a>) -> Self {
     Self {
-      name: String::from(name),
+      value: String::from(name),
       start: node.start_position(),
       end: node.end_position(),
     }
   }
 
   pub fn name(&self) -> &str {
-    &self.name
+    &self.value
   }
 }
 
-bm_contains!(Variable);
-bm_span!(Variable);
-bm_to_base_model!(Variable);
+bm_contains!(Identifier);
+bm_span!(Identifier);
+bm_to_base_model!(Identifier);
 
-impl<'a> Children<'a> for Variable {
+impl<'a> Children<'a> for Identifier {
   fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
     vec![]
   }
@@ -691,7 +689,7 @@ pub enum Expr {
   Indexing(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
   FunctionCall(String, Option<FunctionArgument>),
   Literal(Literal),
-  Variable(Variable),
+  Variable(Identifier),
 }
 
 #[derive(Debug, Clone)]
