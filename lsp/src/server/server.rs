@@ -16,11 +16,13 @@ use crate::{
 };
 
 pub fn start_server(startup_type: StartUpType, mut parser: Parser) -> Result<(), Box<dyn Error>> {
+  eprintln!("Starting server over {:?}", startup_type);
+
   let (connection, io_threads) = match startup_type {
     StartUpType::STDIO => Connection::stdio(),
     StartUpType::TCP(port) => {
-      let addr = format!("127.0.0.1:{port}");
-      Connection::listen(addr)?
+      let addr = format!("0.0.0.0:{port}");
+      Connection::connect(addr)?
     }
   };
 
@@ -49,6 +51,8 @@ pub fn start_server(startup_type: StartUpType, mut parser: Parser) -> Result<(),
     Ok(it) => it,
     Err(err) => return Err(Box::new(err)),
   };
+
+  eprintln!("LSP Initialized");
 
   main_loop(connection, &mut parser)?;
   io_threads.join()?;
@@ -221,7 +225,7 @@ fn handle_tokenize_request(
   let tokenize_params = tokenize_r.1;
   let (_, tree) = evaulated_trees.find(&tokenize_params.text_document);
 
-  let tokenization_result = tokenize(&tree.root_node());
+  let tokenization_result = tokenize(&tree);
 
   let tokenize_msg = SemanticTokensResult::Tokens(SemanticTokens {
     result_id: None,

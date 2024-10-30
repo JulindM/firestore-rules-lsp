@@ -12,8 +12,8 @@ use tree_sitter_firestore_rules;
 
 pub fn main() -> Result<(), Box<dyn Error>> {
   let args = Command::new("firestore-rules-lsp").args(&[
-    arg!( port: --port <NUMBER> "port if starting the lsp as a server").conflicts_with("stdio"),
-    arg!(stdio: --stdio "flag to start over stdio").conflicts_with("port"),
+    arg!(socket: --socket <NUMBER> "port if starting the lsp as a server").conflicts_with("stdio"),
+    arg!(stdio: --stdio "flag to start over stdio").conflicts_with("socket"),
   ]);
 
   let arg_result = args.try_get_matches();
@@ -26,7 +26,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
   let matches = arg_result.unwrap();
 
-  let port_str = matches.get_one::<String>("port");
+  let port_str = matches.get_one::<String>("socket");
 
   let mut startup_type = StartUpType::STDIO;
 
