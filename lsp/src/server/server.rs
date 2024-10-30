@@ -12,12 +12,17 @@ use crate::{
     analysis::{get_lowest_denominator, try_find_definition},
     tokenizer::{get_used_semantic_token_modifiers, get_used_semantic_token_types, tokenize},
   },
+  StartUpType,
 };
 
-pub fn start_server(port: u16, mut parser: Parser) -> Result<(), Box<dyn Error>> {
-  let addr = format!("127.0.0.1:{port}");
-
-  let (connection, io_threads) = Connection::listen(addr.to_owned())?;
+pub fn start_server(startup_type: StartUpType, mut parser: Parser) -> Result<(), Box<dyn Error>> {
+  let (connection, io_threads) = match startup_type {
+    StartUpType::STDIO => Connection::stdio(),
+    StartUpType::TCP(port) => {
+      let addr = format!("127.0.0.1:{port}");
+      Connection::listen(addr)?
+    }
+  };
 
   let server_capabilities = serde_json::to_value(&ServerCapabilities {
     text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
