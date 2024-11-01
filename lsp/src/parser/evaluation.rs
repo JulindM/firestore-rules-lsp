@@ -256,7 +256,7 @@ fn parse_function_call<'b>(
 ) -> (Option<ExprNode>, Vec<ErrorNode>) {
   let mut level_errors = vec![];
 
-  let mut arg = None;
+  let mut args = vec![];
   let mut name = None;
 
   sanitized_children!(node).for_each(|child| match child.kind() {
@@ -267,14 +267,11 @@ fn parse_function_call<'b>(
         child,
       ));
     }
-    "expr_list" => {
-      let mut res = parse_expr_list(child, source_bytes);
-      arg = Some(FunctionArgument::ExprList(res.0));
-      level_errors.append(&mut res.1);
-    }
-    "path" => {
-      let mut res = parse_path(child, source_bytes);
-      arg = Some(FunctionArgument::Path(res.0));
+    "function_argument" => {
+      let mut res = parse_function_arg(child, source_bytes);
+      if res.0.is_some() {
+        args.push(res.0.unwrap());
+      }
       level_errors.append(&mut res.1);
     }
     _ if child.is_error() => level_errors.push(ErrorNode::new(child, source_bytes)),
@@ -282,9 +279,35 @@ fn parse_function_call<'b>(
   });
 
   (
-    Some(ExprNode::new(Expr::FunctionCall(name.unwrap(), arg), node)),
+    Some(ExprNode::new(Expr::FunctionCall(name.unwrap(), args), node)),
     level_errors,
   )
+}
+
+fn parse_function_arg<'b>(
+  node: Node<'b>,
+  source_bytes: &[u8],
+) -> (Option<FunctionArgument>, Vec<ErrorNode>) {
+  for child in sanitized_children!(node) {
+    match child.kind() {
+      _ if child.is_missing() => return (None, vec![ErrorNode::new(child, source_bytes)]),
+      "expr" => {
+        let res = parse_expr(child, source_bytes);
+        return (
+          res.0.and_then(|node| Some(FunctionArgument::Expr(node))),
+          res.1,
+        );
+      }
+      "path" => {
+        let res = parse_path(child, source_bytes);
+        return (Some(FunctionArgument::Path(res.0)), res.1);
+      }
+      _ if child.is_error() => return (None, vec![ErrorNode::new(child, source_bytes)]),
+      _ => continue,
+    }
+  }
+
+  (None, vec![])
 }
 
 fn parse_path<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Vec<PathSegment>, Vec<ErrorNode>) {
@@ -304,7 +327,9 @@ fn parse_path<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Vec<PathSegment>, Vec
           }
           "expr" => {
             let mut expr = parse_expr(child, source_bytes);
-            path_segments.push(PathSegment::EvalPath(expr.0));
+            if expr.0.is_some() {
+              path_segments.push(PathSegment::EvalPath(expr.0.unwrap()));
+            }
             level_errors.append(&mut expr.1);
           }
           _ if child.is_error() => level_errors.push(ErrorNode::new(child, source_bytes)),
@@ -325,10 +350,11 @@ fn parse_expr_list<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Vec<ExprNode>, V
   sanitized_children!(node).for_each(|child| match child.kind() {
     "expr" => {
       let mut res = parse_expr(child, source_bytes);
-      let _ = res.0.and_then(|expr| Some(expr_nodes.push(expr)));
+      if res.0.is_some() {
+        expr_nodes.push(res.0.unwrap());
+      }
       level_errors.append(&mut res.1);
     }
-    "," => return,
     _ => level_errors.push(ErrorNode::new(child, source_bytes)),
   });
 
@@ -434,19 +460,41 @@ fn parse_member<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Option<ExprNode>, V
     return (None, vec![ErrorNode::new(node, source_bytes)]);
   }
 
-  let object;
-  let field;
   let mut level_errors = vec![];
 
-  object = parse_expr(children[0], source_bytes);
-  field = parse_expr(children[2], source_bytes);
+  let object_node = &children[0];
 
-  let expr = Expr::Member(object.0.map(Box::new), field.0.map(Box::new));
+  let object = match object_node.kind() {
+    "primary" => {
+      let mut res = parse_primary(*object_node, source_bytes);
 
-  level_errors = [level_errors, object.1, field.1]
-    .into_iter()
-    .flatten()
-    .collect();
+      level_errors.append(&mut res.1);
+      res.0
+    }
+    "member" => {
+      let mut res = parse_member(*object_node, source_bytes);
+      level_errors.append(&mut res.1);
+      res.0
+    }
+    _ => None,
+  };
+
+  let field_node = &children[2];
+  let field = match field_node.kind() {
+    "variable" => {
+      let mut res = parse_variable(*field_node, source_bytes);
+      level_errors.append(&mut res.1);
+      res.0
+    }
+    "function_call" => {
+      let mut res = parse_function_call(*field_node, source_bytes);
+      level_errors.append(&mut res.1);
+      res.0
+    }
+    _ => None,
+  };
+
+  let expr = Expr::Member(object.map(Box::new), field.map(Box::new));
 
   (Some(ExprNode::new(expr, node)), level_errors)
 }

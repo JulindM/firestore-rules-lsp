@@ -77,13 +77,32 @@ pub fn get_lowest_denominator<'a>(
     return vec![];
   }
 
+  eprintln!(
+    "I am {}, spanning {:?} looking for {:?}",
+    nestable.to_base_model().type_str(),
+    nestable.to_base_model().span(),
+    position,
+  );
   let mut res = vec![nestable.to_base_model()];
 
   let children = nestable.children();
 
+  eprintln!(
+    "I have {}",
+    children
+      .iter()
+      .map(|c| c.to_base_model().type_str().to_owned())
+      .collect::<Vec<String>>()
+      .join(", ")
+  );
+
   let child_hit = children.into_iter().find(|el| el.contains(position));
 
   if child_hit.is_none() {
+    eprintln!(
+      "No child hit for {} so it must be me left",
+      nestable.to_base_model().type_str()
+    );
     return res;
   }
 

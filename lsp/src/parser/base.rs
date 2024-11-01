@@ -637,13 +637,13 @@ pub enum Operation {
 #[derive(Debug, Clone)]
 pub enum PathSegment {
   String(Identifier),
-  EvalPath(Option<ExprNode>),
+  EvalPath(ExprNode),
 }
 
 #[derive(Debug, Clone)]
 pub enum FunctionArgument {
   Path(Vec<PathSegment>),
-  ExprList(Vec<ExprNode>),
+  Expr(ExprNode),
 }
 
 #[derive(Debug, Clone)]
@@ -696,7 +696,7 @@ pub enum Expr {
   ),
   Member(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
   Indexing(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
-  FunctionCall(Identifier, Option<FunctionArgument>),
+  FunctionCall(Identifier, Vec<FunctionArgument>),
   Literal(Literal),
   Variable(Identifier),
 }
@@ -734,29 +734,22 @@ impl<'a> Children<'a> for ExprNode {
       Expr::Ternary(expr_node, expr_node1, expr_node2) => {
         resolve_expr_nest(vec![expr_node, expr_node1, expr_node2])
       }
-      Expr::Member(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
+      Expr::Member(expr_node, expr_node1) => {
+        eprintln!("Chilren of member: {:?}, {:?}", expr_node, expr_node);
+        resolve_expr_nest(vec![expr_node, expr_node1])
+      }
       Expr::Indexing(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
-      Expr::FunctionCall(name, function_argument) => {
+      Expr::FunctionCall(name, function_arguments) => {
         let mut res: Vec<&dyn Children<'a>> = vec![name];
 
-        let mut f_args = match function_argument {
-          Some(FunctionArgument::Path(path_vec)) => path_vec
-            .iter()
-            .map(|el| match el {
-              PathSegment::String(identifier) => vec![identifier as &dyn Children<'a>],
-              PathSegment::EvalPath(expr_node) => {
-                resolve_expr_nest_non_box(vec![expr_node.as_ref()])
-              }
-            })
-            .flatten()
-            .collect(),
-          Some(FunctionArgument::ExprList(vec)) => {
-            vec.iter().map(|el| el as &dyn Children<'a>).collect()
-          }
-          None => vec![],
-        };
+        function_arguments.iter().for_each(|arg| match arg {
+          FunctionArgument::Path(path_segs) => path_segs.iter().for_each(|ps| match ps {
+            PathSegment::String(identifier) => res.push(identifier),
+            PathSegment::EvalPath(expr_node) => res.push(expr_node),
+          }),
+          FunctionArgument::Expr(expr_node) => res.push(expr_node),
+        });
 
-        res.append(&mut f_args);
         res
       }
       _ => vec![],
@@ -765,17 +758,11 @@ impl<'a> Children<'a> for ExprNode {
 }
 
 fn resolve_expr_nest<'a>(expr_node: Vec<&'a Option<Box<ExprNode>>>) -> Vec<&'a dyn Children<'a>> {
-  resolve_expr_nest_non_box(expr_node.iter().map(|el| el.as_deref()).collect())
-}
-
-fn resolve_expr_nest_non_box<'a>(
-  expr_node: Vec<Option<&'a ExprNode>>,
-) -> Vec<&'a dyn Children<'a>> {
   expr_node
     .into_iter()
     .map(|el| {
-      el.as_ref()
-        .map_or_else(|| vec![], |node| vec![*node as &dyn Children<'a>])
+      el.as_deref()
+        .map_or_else(|| vec![], |node| vec![node as &dyn Children<'a>])
     })
     .flatten()
     .collect()
