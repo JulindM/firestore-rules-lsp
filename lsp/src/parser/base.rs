@@ -108,19 +108,29 @@ pub trait Spanned {
 
 impl Contains for (Point, Point) {
   fn contains(&self, p: Point) -> bool {
-    if self.0.row < p.row && self.1.row > p.row {
-      return true;
+    if p.row < self.0.row || p.row > self.1.row {
+      // p not in (start line, end line)
+      return false;
     }
 
-    if self.0.row == p.row {
-      return self.0.column <= p.column;
-    }
+    if self.0.row < self.1.row {
+      // Mutliline spanning block
+      if p.row > self.0.row || p.row < self.1.row {
+        // p in (start line, end line)
+        return true;
+      }
 
-    if self.1.row == p.row {
-      return p.column <= self.1.column;
-    }
+      if p.row == self.0.row {
+        // p in start line
+        return p.column >= self.0.column;
+      }
 
-    return false;
+      // p in end line
+      return p.column < self.1.column;
+    } else {
+      // Oneline spanning
+      return self.0.column <= p.column && p.column <= self.1.column;
+    }
   }
 }
 
@@ -347,7 +357,7 @@ impl MatchPathPart {
 
   pub fn value(&self) -> &str {
     match self.pathpart_type {
-      MatchPathPartType::SinglePath => self
+      MatchPathPartType::Document => self
         .value
         .strip_prefix("/{")
         .unwrap()
@@ -372,7 +382,7 @@ impl<'a> Children<'a> for MatchPathPart {
 #[derive(Debug, Clone, PartialEq)]
 pub enum MatchPathPartType {
   Collection,
-  SinglePath,
+  Document,
   MultiPath,
 }
 
@@ -387,14 +397,6 @@ impl MatchPath {
   pub fn new<'a>(path_parts: Vec<MatchPathPart>, node: Node<'a>) -> Self {
     Self {
       path_parts,
-      start: node.start_position(),
-      end: node.end_position(),
-    }
-  }
-
-  pub(crate) fn empty<'a>(node: Node<'a>) -> Self {
-    Self {
-      path_parts: vec![],
       start: node.start_position(),
       end: node.end_position(),
     }

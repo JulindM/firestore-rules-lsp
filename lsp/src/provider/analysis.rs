@@ -2,12 +2,15 @@ use tree_sitter::Point;
 
 use crate::parser::base::{BaseModel, Children, Expr, MatchPathPartType, ToBaseModel};
 
-pub fn try_find_definition<'a>(traversal: Vec<BaseModel<'a>>) -> Option<BaseModel<'a>> {
+pub fn try_find_definition<'a>(traversal: &Vec<BaseModel<'a>>) -> Option<BaseModel<'a>> {
   if traversal.len() < 2 {
     return None;
   }
 
-  let innermost_identifiable = traversal.iter().rev().enumerate().find(|el| match el {
+  let mut reverse_traversal = traversal.clone();
+  reverse_traversal.reverse();
+
+  let innermost_identifiable = reverse_traversal.iter().enumerate().find(|el| match el {
     (_, BaseModel::ExprNode(expr)) => match expr.expr() {
       Expr::FunctionCall(_, _) => true,
       Expr::Variable(_) => true,
@@ -17,16 +20,29 @@ pub fn try_find_definition<'a>(traversal: Vec<BaseModel<'a>>) -> Option<BaseMode
   });
 
   if innermost_identifiable.is_none() {
+    eprintln!("No hit");
     return None;
   }
 
-  let (innermost_index, to_identify) = innermost_identifiable.unwrap();
+  let (hit_idx, to_identify) = innermost_identifiable.unwrap();
 
-  let (left, _) = traversal.split_at(innermost_index);
+  eprintln!("-- {hit_idx}, {to_identify:?}");
+
+  let (_, to_look_in) = reverse_traversal.split_at(hit_idx + 1);
+
+  eprintln!(
+    "Looking for {} in {}",
+    to_identify.type_str(),
+    to_look_in
+      .iter()
+      .map(|b| b.type_str())
+      .collect::<Vec<&str>>()
+      .join("->")
+  );
 
   match to_identify {
     BaseModel::ExprNode(node) => match node.expr() {
-      Expr::FunctionCall(fname, _) => left
+      Expr::FunctionCall(fname, _) => to_look_in
         .iter()
         .filter_map(|el| match el {
           BaseModel::MatchBody(mb) => Some(mb),
@@ -36,13 +52,13 @@ pub fn try_find_definition<'a>(traversal: Vec<BaseModel<'a>>) -> Option<BaseMode
         .flatten()
         .find(|f| f.name().eq(fname.value()))
         .and_then(|f| Some(f.to_base_model())),
-      Expr::Variable(ident) => left
+      Expr::Variable(ident) => to_look_in
         .iter()
         .filter_map(|el| match el {
           BaseModel::Match(mb) => mb.path().map(|p| {
             p.path_parts()
               .iter()
-              .filter(|p| *p.pathpart_type() == MatchPathPartType::SinglePath)
+              .filter(|p| *p.pathpart_type() == MatchPathPartType::Document)
               .map(|val| val.to_base_model())
               .collect::<Vec<BaseModel<'a>>>()
           }),
@@ -55,10 +71,16 @@ pub fn try_find_definition<'a>(traversal: Vec<BaseModel<'a>>) -> Option<BaseMode
           _ => None,
         })
         .flatten()
-        .find(|definition| match definition {
-          BaseModel::VariableDefintion(vd) => vd.name().eq(ident.value()),
-          BaseModel::MatchPathPart(mpp) => mpp.value().eq(ident.value()),
-          _ => false,
+        .find(|definition| {
+          eprintln!("---- {}", definition.type_str());
+          match definition {
+            BaseModel::VariableDefintion(vd) => vd.name().eq(ident.value()),
+            BaseModel::MatchPathPart(mpp) => {
+              eprintln!("------ {} ? {}", mpp.value(), ident.value());
+              mpp.value().eq(ident.value())
+            }
+            _ => false,
+          }
         }),
       _ => None,
     },

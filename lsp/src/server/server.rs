@@ -164,7 +164,7 @@ fn handle_go_to_definition(
 
   let traversal = get_lowest_denominator(to_point(definition_param.position), body);
 
-  let definition = try_find_definition(traversal);
+  let definition = try_find_definition(&traversal);
 
   if definition.is_none() {
     let _ = connection.sender.send(Message::Response(Response::new_ok(
@@ -287,22 +287,10 @@ where
 
 trait Find {
   fn find<'a>(&'a self, text_document: &TextDocumentIdentifier) -> &'a (EvaluatedTree, Tree);
-  fn find_ver<'a>(
-    &'a self,
-    text_document: VersionedTextDocumentIdentifier,
-  ) -> &'a (EvaluatedTree, Tree);
 }
 
 impl Find for LSPTreeStorage {
   fn find<'a>(&'a self, text_document: &TextDocumentIdentifier) -> &'a (EvaluatedTree, Tree) {
-    let id = text_document.uri.as_str();
-    &self[id]
-  }
-
-  fn find_ver<'a>(
-    &'a self,
-    text_document: VersionedTextDocumentIdentifier,
-  ) -> &'a (EvaluatedTree, Tree) {
     let id = text_document.uri.as_str();
     &self[id]
   }

@@ -20,7 +20,7 @@ pub fn tokenize<'a>(tree: &Tree) -> Vec<SemanticToken> {
     return semantic_tokens;
   }
 
-  for i in (1..=absolute_tokenization.len() - 1) {
+  for i in 1..=absolute_tokenization.len() - 1 {
     let to_add =
       absolute_tokenization[i].get_semantic_token_from_prev(&absolute_tokenization[i - 1]);
     semantic_tokens.push(to_add);
