@@ -149,15 +149,11 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": true,
-      "required": true,
+      "multiple": false,
+      "required": false,
       "types": [
         {
           "type": "expr_list",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -397,22 +393,15 @@
   {
     "type": "path_segment",
     "named": true,
-    "fields": {
-      "path": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "expr",
-            "named": true
-          }
-        ]
-      }
-    },
+    "fields": {},
     "children": {
       "multiple": false,
-      "required": false,
+      "required": true,
       "types": [
+        {
+          "type": "expr",
+          "named": true
+        },
         {
           "type": "identifier",
           "named": true
@@ -495,6 +484,21 @@
     }
   },
   {
+    "type": "rules_version_def",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "service_name",
     "named": true,
     "fields": {}
@@ -510,6 +514,10 @@
       "types": [
         {
           "type": "match_body",
+          "named": true
+        },
+        {
+          "type": "rules_version_def",
           "named": true
         },
         {
@@ -743,6 +751,10 @@
     "named": false
   },
   {
+    "type": "function_calling_name",
+    "named": false
+  },
+  {
     "type": "function_name",
     "named": false
   },
@@ -796,6 +808,10 @@
   },
   {
     "type": "return",
+    "named": false
+  },
+  {
+    "type": "rules_version",
     "named": false
   },
   {

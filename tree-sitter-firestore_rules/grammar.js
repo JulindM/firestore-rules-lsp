@@ -7,7 +7,9 @@ module.exports = grammar({
   extras: ($) => [$.comment, /\s/],
 
   rules: {
-    source_file: ($) => seq($.service_name, $.match_body),
+    source_file: ($) => seq(optional($.rules_version_def), $.service_name, $.match_body),
+
+    rules_version_def: ($) => seq("rules_version", "=", $.string, ";"),
 
     service_name: ($) => seq("service", "cloud.firestore"),
 
@@ -54,7 +56,7 @@ module.exports = grammar({
       token.immediate(seq("\\", choice("\\", "?", '"', "'", "`"))),
 
     path_segment: ($) =>
-      choice($.identifier, seq("$(", field("path", $.expr), ")")),
+      choice($.identifier, seq("$(", $.expr, ")")),
 
     path: ($) => repeat1(seq("/", $.path_segment)),
 
@@ -62,7 +64,7 @@ module.exports = grammar({
       prec.left(
         1,
         seq(
-          $.identifier,
+          alias($.identifier, "function_calling_name"),
           token.immediate("("),
           optional(choice($.path, $.expr_list)),
           ")"
