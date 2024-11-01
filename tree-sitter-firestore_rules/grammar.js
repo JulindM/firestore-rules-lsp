@@ -60,13 +60,15 @@ module.exports = grammar({
 
     path: ($) => repeat1(seq("/", $.path_segment)),
 
+    function_argument: ($) => choice($.path, $.expr),
+
     function_call: ($) =>
       prec.left(
         1,
         seq(
           alias($.identifier, "function_calling_name"),
           token.immediate("("),
-          optional(choice($.path, $.expr_list)),
+          optional(seq($.function_argument, repeat(seq(",", $.function_argument)))),
           ")"
         )
       ),
@@ -88,7 +90,7 @@ module.exports = grammar({
         8,
         seq(
           choice($.member, $.primary),
-          ".",
+          token.immediate("."),
           choice($.variable, $.function_call)
         )
       ),

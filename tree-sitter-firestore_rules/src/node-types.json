@@ -126,6 +126,25 @@
     }
   },
   {
+    "type": "function_argument",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "expr",
+          "named": true
+        },
+        {
+          "type": "path",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "function_body",
     "named": true,
     "fields": {},
@@ -149,15 +168,11 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": false,
       "types": [
         {
-          "type": "expr_list",
-          "named": true
-        },
-        {
-          "type": "path",
+          "type": "function_argument",
           "named": true
         }
       ]
