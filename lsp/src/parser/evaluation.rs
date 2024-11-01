@@ -300,7 +300,7 @@ fn parse_path<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Vec<PathSegment>, Vec
           _ if child.is_missing() => level_errors.push(ErrorNode::new(child, source_bytes)),
           "identifier" => {
             let name = child.utf8_text(source_bytes).unwrap();
-            path_segments.push(PathSegment::String(Identifier::new(name, node)))
+            path_segments.push(PathSegment::String(Identifier::new(name, child)))
           }
           "expr" => {
             let mut expr = parse_expr(child, source_bytes);

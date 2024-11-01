@@ -737,12 +737,16 @@ impl<'a> Children<'a> for ExprNode {
       Expr::Member(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::Indexing(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::FunctionCall(name, function_argument) => {
-        let mut f_arg_children = match function_argument {
+        let mut res: Vec<&dyn Children<'a>> = vec![name];
+
+        let mut f_args = match function_argument {
           Some(FunctionArgument::Path(path_vec)) => path_vec
             .iter()
             .map(|el| match el {
               PathSegment::String(identifier) => vec![identifier as &dyn Children<'a>],
-              PathSegment::EvalPath(expr_node) => resolve_expr_nest_non_box(vec![expr_node]),
+              PathSegment::EvalPath(expr_node) => {
+                resolve_expr_nest_non_box(vec![expr_node.as_ref()])
+              }
             })
             .flatten()
             .collect(),
@@ -752,9 +756,8 @@ impl<'a> Children<'a> for ExprNode {
           None => vec![],
         };
 
-        f_arg_children.push(name);
-
-        f_arg_children
+        res.append(&mut f_args);
+        res
       }
       _ => vec![],
     }
@@ -762,24 +765,17 @@ impl<'a> Children<'a> for ExprNode {
 }
 
 fn resolve_expr_nest<'a>(expr_node: Vec<&'a Option<Box<ExprNode>>>) -> Vec<&'a dyn Children<'a>> {
-  expr_node
-    .into_iter()
-    .map(|el| {
-      el.as_ref()
-        .map_or_else(|| vec![], |node| vec![node.as_ref() as &dyn Children<'a>])
-    })
-    .flatten()
-    .collect()
+  resolve_expr_nest_non_box(expr_node.iter().map(|el| el.as_deref()).collect())
 }
 
 fn resolve_expr_nest_non_box<'a>(
-  expr_node: Vec<&'a Option<ExprNode>>,
+  expr_node: Vec<Option<&'a ExprNode>>,
 ) -> Vec<&'a dyn Children<'a>> {
   expr_node
     .into_iter()
     .map(|el| {
       el.as_ref()
-        .map_or_else(|| vec![], |node| vec![node as &dyn Children<'a>])
+        .map_or_else(|| vec![], |node| vec![*node as &dyn Children<'a>])
     })
     .flatten()
     .collect()

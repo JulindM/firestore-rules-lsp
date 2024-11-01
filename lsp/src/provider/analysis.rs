@@ -20,25 +20,12 @@ pub fn try_find_definition<'a>(traversal: &Vec<BaseModel<'a>>) -> Option<BaseMod
   });
 
   if innermost_identifiable.is_none() {
-    eprintln!("No hit");
     return None;
   }
 
   let (hit_idx, to_identify) = innermost_identifiable.unwrap();
 
-  eprintln!("-- {hit_idx}, {to_identify:?}");
-
   let (_, to_look_in) = reverse_traversal.split_at(hit_idx + 1);
-
-  eprintln!(
-    "Looking for {} in {}",
-    to_identify.type_str(),
-    to_look_in
-      .iter()
-      .map(|b| b.type_str())
-      .collect::<Vec<&str>>()
-      .join("->")
-  );
 
   match to_identify {
     BaseModel::ExprNode(node) => match node.expr() {
@@ -71,16 +58,10 @@ pub fn try_find_definition<'a>(traversal: &Vec<BaseModel<'a>>) -> Option<BaseMod
           _ => None,
         })
         .flatten()
-        .find(|definition| {
-          eprintln!("---- {}", definition.type_str());
-          match definition {
-            BaseModel::VariableDefintion(vd) => vd.name().eq(ident.value()),
-            BaseModel::MatchPathPart(mpp) => {
-              eprintln!("------ {} ? {}", mpp.value(), ident.value());
-              mpp.value().eq(ident.value())
-            }
-            _ => false,
-          }
+        .find(|definition| match definition {
+          BaseModel::VariableDefintion(vd) => vd.name().eq(ident.value()),
+          BaseModel::MatchPathPart(mpp) => mpp.value().eq(ident.value()),
+          _ => false,
         }),
       _ => None,
     },
@@ -99,6 +80,7 @@ pub fn get_lowest_denominator<'a>(
   let mut res = vec![nestable.to_base_model()];
 
   let children = nestable.children();
+
   let child_hit = children.into_iter().find(|el| el.contains(position));
 
   if child_hit.is_none() {
