@@ -7,7 +7,7 @@ use std::{collections::HashMap, error::Error};
 use tree_sitter::{Parser, Point, Tree};
 
 use crate::{
-  parser::{evaluation::evaluate_tree, extensions::EvaluatedTree},
+  parser::{base::MatchBody, evaluation::evaluate_tree, extensions::EvaluatedTree},
   provider::{
     analysis::{get_lowest_denominator, try_find_definition},
     tokenizer::{get_used_semantic_token_modifiers, get_used_semantic_token_types, tokenize},
@@ -121,7 +121,7 @@ fn open_doc(
   let content = did_open.text_document.text.clone();
 
   let parsed_tree = parser.parse(content.clone(), None).unwrap();
-  let evaluated_tree = evaluate_tree(parsed_tree.clone(), content.as_bytes()).unwrap();
+  let evaluated_tree = evaluate_tree(parsed_tree.clone(), content.as_bytes());
 
   evaulated_trees.insert(
     did_open.text_document.uri.to_string(),
@@ -135,12 +135,10 @@ fn change_doc(
   evaulated_trees: &mut LSPTreeStorage,
 ) {
   // FIXME What if one these returns none
-  let (_, old_tree) = evaulated_trees.find_ver(did_change.text_document.clone());
-
   let content = &did_change.content_changes.last().unwrap().text;
 
   let parsed_tree = parser.parse(content.clone(), None).unwrap();
-  let evaluated_tree = evaluate_tree(parsed_tree.clone(), content.as_bytes()).unwrap();
+  let evaluated_tree = evaluate_tree(parsed_tree.clone(), content.as_bytes());
 
   evaulated_trees.insert(
     did_change.text_document.uri.to_string(),
@@ -155,16 +153,22 @@ fn handle_go_to_definition(
   connection: &Connection,
 ) {
   let definition_param = definition_r.1.text_document_position_params;
-  let (ev_tree, _) = evaulated_trees.find(&definition_param.text_document);
 
-  let traversal =
-    get_lowest_denominator(to_point(definition_param.position), ev_tree.tree().body());
+  let body = match try_get_body(evaulated_trees, &definition_param.text_document) {
+    Some(value) => value,
+    None => {
+      Message::Response(Response::new_ok(req.id.clone(), "No body found"));
+      return;
+    }
+  };
+
+  let traversal = get_lowest_denominator(to_point(definition_param.position), body);
 
   let definition = try_find_definition(traversal);
 
   if definition.is_none() {
     let _ = connection.sender.send(Message::Response(Response::new_ok(
-      req.id,
+      req.id.clone(),
       "No definition found",
     )));
     return;
@@ -183,6 +187,27 @@ fn handle_go_to_definition(
   let _ = connection.sender.send(Message::Response(msg));
 }
 
+fn try_get_body<'a>(
+  evaulated_trees: &'a HashMap<String, (EvaluatedTree, Tree)>,
+  doc_id: &TextDocumentIdentifier,
+) -> Option<&'a MatchBody> {
+  let (ev_tree, _) = evaulated_trees.find(doc_id);
+
+  let firestore_tree = ev_tree.tree();
+
+  if firestore_tree.is_none() {
+    return None;
+  }
+
+  let body = firestore_tree.unwrap().body();
+
+  if body.is_none() {
+    return None;
+  }
+
+  body
+}
+
 fn handle_hover(
   hover_r: (RequestId, HoverParams),
   evaulated_trees: &LSPTreeStorage,
@@ -190,10 +215,16 @@ fn handle_hover(
   connection: &Connection,
 ) {
   let hover_params = hover_r.1.text_document_position_params;
-  let (ev_tree, _) = evaulated_trees.find(&hover_params.text_document);
 
-  let traversal_list =
-    get_lowest_denominator(to_point(hover_params.position), ev_tree.tree().body());
+  let body = match try_get_body(evaulated_trees, &hover_params.text_document) {
+    Some(value) => value,
+    None => {
+      Message::Response(Response::new_ok(req.id.clone(), "No body found"));
+      return;
+    }
+  };
+
+  let traversal_list = get_lowest_denominator(to_point(hover_params.position), body);
 
   let traversal: String = traversal_list
     .into_iter()

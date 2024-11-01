@@ -88,7 +88,10 @@ impl AbsoluteToken {
 }
 
 fn build_absolute_token<'a>(node: &Node<'a>) -> Option<AbsoluteToken> {
-  let token_type = get_semantic_type(node.kind());
+  let token_type = get_semantic_type(
+    node.kind(),
+    node.parent().and_then(|p| Some(p.kind())).unwrap_or(""),
+  );
 
   if token_type.is_none() {
     return None;
@@ -117,25 +120,33 @@ pub fn get_used_semantic_token_types() -> Vec<SemanticTokenType> {
     SemanticTokenType::KEYWORD,  //5
     SemanticTokenType::FUNCTION, //6
     SemanticTokenType::VARIABLE, //7
+    SemanticTokenType::PROPERTY, //8
   ]
 }
 
 pub fn get_used_semantic_token_modifiers() -> Vec<SemanticTokenModifier> {
   vec![
-    SemanticTokenModifier::DEFINITION, //0
+    SemanticTokenModifier::DECLARATION, //0
   ]
 }
 
-fn get_semantic_type(type_str: &str) -> Option<(u32, Option<u32>)> {
+fn get_semantic_type(type_str: &str, parent_type: &str) -> Option<(u32, Option<u32>)> {
   let token_type = match type_str {
     "comment" => Some(0),
     "number" => Some(1),
-    "string" | "path" => Some(2),
-    "variable" => Some(3),
+    "string" => Some(2),
+    "variable" => match parent_type {
+      "member" => Some(8),
+      _ => Some(7),
+    },
+    "identifier" => match parent_type {
+      "path_segment" => Some(2),
+      _ => None,
+    },
     "!" | "-" | "+" | "=" | "mult_op" | "relation_op" | "&&" | "||" | "?" | ":" => Some(4),
     "false" | "true" | "null" | "let" | "return" | "function" | "method" | "create" | "update"
     | "delete" | "match" | "allow" | "if" | "service" | "cloud.firestore" => Some(5),
-    "function_name" => Some(6),
+    "function_name" | "function_calling_name" => Some(6),
     "single_path_seg" | "multi_path_seg" => Some(7),
     _ => None,
   };
@@ -146,6 +157,7 @@ fn get_semantic_type(type_str: &str) -> Option<(u32, Option<u32>)> {
 
   let modifier = match type_str {
     "function" => Some(1),
+    "function_name" => Some(1),
     _ => None,
   };
 

@@ -21,12 +21,12 @@ impl ErrorNode {
 
 #[derive(Debug)]
 pub struct EvaluatedTree {
-  tree: FirestoreTree,
+  tree: Option<FirestoreTree>,
   error_nodes: Vec<ErrorNode>,
 }
 
 impl EvaluatedTree {
-  pub fn new(tree: FirestoreTree, errors: Vec<ErrorNode>) -> Self {
+  pub fn new(tree: Option<FirestoreTree>, errors: Vec<ErrorNode>) -> Self {
     Self {
       tree: tree.clone(),
       error_nodes: errors,
@@ -37,7 +37,7 @@ impl EvaluatedTree {
     &self.error_nodes
   }
 
-  pub fn tree(&self) -> &FirestoreTree {
-    &self.tree
+  pub fn tree(&self) -> Option<&FirestoreTree> {
+    self.tree.as_ref()
   }
 }

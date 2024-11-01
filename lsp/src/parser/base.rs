@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use tree_sitter::{Node, Point};
 
 macro_rules! bm_span(
@@ -27,7 +29,7 @@ macro_rules! bm_to_base_model(
     }
 ));
 
-pub trait Children<'a>: Contains + ToBaseModel {
+pub trait Children<'a>: Contains + ToBaseModel + Debug {
   fn children(&'a self) -> Vec<&'a dyn Children<'a>>;
 }
 
@@ -110,34 +112,30 @@ impl Contains for (Point, Point) {
       return true;
     }
 
-    if self.0.row == p.row && self.1.row > p.row {
+    if self.0.row == p.row {
       return self.0.column <= p.column;
     }
 
-    if self.0.row < p.row && self.1.row == p.row {
-      return self.1.column >= p.column;
+    if self.1.row == p.row {
+      return p.column <= self.1.column;
     }
 
-    if self.0.row == self.1.row && self.0.row != p.row {
-      return false;
-    }
-
-    return self.0.column <= p.column && self.1.column >= p.column;
+    return false;
   }
 }
 
 #[derive(Debug, Clone)]
 pub struct FirestoreTree {
-  body: MatchBody,
+  body: Option<MatchBody>,
 }
 
 impl<'a> FirestoreTree {
-  pub fn new(body: MatchBody) -> Self {
+  pub fn new(body: Option<MatchBody>) -> Self {
     Self { body }
   }
 
-  pub fn body(&self) -> &MatchBody {
-    &self.body
+  pub fn body(&self) -> Option<&MatchBody> {
+    self.body.as_ref()
   }
 }
 
@@ -310,7 +308,7 @@ impl Identifier {
     }
   }
 
-  pub fn name(&self) -> &str {
+  pub fn value(&self) -> &str {
     &self.value
   }
 }
@@ -636,7 +634,7 @@ pub enum Operation {
 
 #[derive(Debug, Clone)]
 pub enum PathSegment {
-  String(String),
+  String(Identifier),
   EvalPath(Option<ExprNode>),
 }
 
@@ -696,7 +694,7 @@ pub enum Expr {
   ),
   Member(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
   Indexing(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
-  FunctionCall(String, Option<FunctionArgument>),
+  FunctionCall(Identifier, Option<FunctionArgument>),
   Literal(Literal),
   Variable(Identifier),
 }
@@ -736,14 +734,26 @@ impl<'a> Children<'a> for ExprNode {
       }
       Expr::Member(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::Indexing(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
-      Expr::FunctionCall(name, function_argument) => match function_argument {
-        // Todo path segments to base models
-        Some(FunctionArgument::Path(path)) => vec![],
-        Some(FunctionArgument::ExprList(vec)) => {
-          vec.iter().map(|el| el as &dyn Children<'a>).collect()
-        }
-        None => vec![],
-      },
+      Expr::FunctionCall(name, function_argument) => {
+        let mut f_arg_children = match function_argument {
+          Some(FunctionArgument::Path(path_vec)) => path_vec
+            .iter()
+            .map(|el| match el {
+              PathSegment::String(identifier) => vec![identifier as &dyn Children<'a>],
+              PathSegment::EvalPath(expr_node) => resolve_expr_nest_non_box(vec![expr_node]),
+            })
+            .flatten()
+            .collect(),
+          Some(FunctionArgument::ExprList(vec)) => {
+            vec.iter().map(|el| el as &dyn Children<'a>).collect()
+          }
+          None => vec![],
+        };
+
+        f_arg_children.push(name);
+
+        f_arg_children
+      }
       _ => vec![],
     }
   }
@@ -755,6 +765,19 @@ fn resolve_expr_nest<'a>(expr_node: Vec<&'a Option<Box<ExprNode>>>) -> Vec<&'a d
     .map(|el| {
       el.as_ref()
         .map_or_else(|| vec![], |node| vec![node.as_ref() as &dyn Children<'a>])
+    })
+    .flatten()
+    .collect()
+}
+
+fn resolve_expr_nest_non_box<'a>(
+  expr_node: Vec<&'a Option<ExprNode>>,
+) -> Vec<&'a dyn Children<'a>> {
+  expr_node
+    .into_iter()
+    .map(|el| {
+      el.as_ref()
+        .map_or_else(|| vec![], |node| vec![node as &dyn Children<'a>])
     })
     .flatten()
     .collect()

@@ -7,9 +7,24 @@ pub fn try_find_definition<'a>(traversal: Vec<BaseModel<'a>>) -> Option<BaseMode
     return None;
   }
 
-  let (left, child) = traversal.split_at(traversal.len() - 1);
+  let innermost_identifiable = traversal.iter().rev().enumerate().find(|el| match el {
+    (_, BaseModel::ExprNode(expr)) => match expr.expr() {
+      Expr::FunctionCall(_, _) => true,
+      Expr::Variable(_) => true,
+      _ => false,
+    },
+    _ => false,
+  });
 
-  match child.first().unwrap() {
+  if innermost_identifiable.is_none() {
+    return None;
+  }
+
+  let (innermost_index, to_identify) = innermost_identifiable.unwrap();
+
+  let (left, _) = traversal.split_at(innermost_index);
+
+  match to_identify {
     BaseModel::ExprNode(node) => match node.expr() {
       Expr::FunctionCall(fname, _) => left
         .iter()
@@ -19,7 +34,7 @@ pub fn try_find_definition<'a>(traversal: Vec<BaseModel<'a>>) -> Option<BaseMode
         })
         .map(|el| el.functions())
         .flatten()
-        .find(|f| f.name().eq(fname))
+        .find(|f| f.name().eq(fname.value()))
         .and_then(|f| Some(f.to_base_model())),
       Expr::Variable(ident) => left
         .iter()
@@ -41,8 +56,8 @@ pub fn try_find_definition<'a>(traversal: Vec<BaseModel<'a>>) -> Option<BaseMode
         })
         .flatten()
         .find(|definition| match definition {
-          BaseModel::VariableDefintion(vd) => vd.name().eq(ident.name()),
-          BaseModel::MatchPathPart(mpp) => mpp.value().eq(ident.name()),
+          BaseModel::VariableDefintion(vd) => vd.name().eq(ident.value()),
+          BaseModel::MatchPathPart(mpp) => mpp.value().eq(ident.value()),
           _ => false,
         }),
       _ => None,

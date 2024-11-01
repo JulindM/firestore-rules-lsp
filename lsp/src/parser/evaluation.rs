@@ -13,47 +13,29 @@ use super::{
   extensions::{ErrorNode, EvaluatedTree},
 };
 
-const SERVICE_NAME: &str = "service_name";
-const ROOT_MATCH: &str = "match_body";
+pub fn evaluate_tree<'a>(tree: Tree, source_bytes: &[u8]) -> EvaluatedTree {
+  let node = tree.root_node();
 
-pub fn evaluate_tree<'a>(tree: Tree, source_bytes: &[u8]) -> Result<EvaluatedTree, String> {
-  let source_node = tree.root_node();
-
-  if source_node.kind() != "source_file" {
-    panic!("No source detected")
+  if node.kind() != "source_file" {
+    return EvaluatedTree::new(None, vec![]);
   }
 
-  let mut cursor = source_node.walk();
+  let mut level_errors = vec![];
+  let mut firestore_tree: Option<FirestoreTree> = None;
 
-  cursor.goto_first_child();
-  let mut curr_node = cursor.node();
-  let mut curr_kind = curr_node.kind();
+  node
+    .children(&mut node.walk())
+    .for_each(|child| match child.kind() {
+      "match_body" => {
+        let (root_match, mut errors) = parse_match_body(None, child, source_bytes);
+        firestore_tree = Some(FirestoreTree::new(Some(root_match)));
+        level_errors.append(&mut errors);
+      }
+      _ if node.is_error() => level_errors.push(ErrorNode::new(node, source_bytes)),
+      _ => return,
+    });
 
-  if curr_kind != SERVICE_NAME {
-    return Err("Expecting a service".to_owned());
-  }
-
-  cursor.goto_next_sibling();
-  curr_node = cursor.node();
-  curr_kind = curr_node.kind();
-
-  if curr_kind != ROOT_MATCH {
-    return Err("Expecting a block".to_owned());
-  }
-
-  cursor.goto_next_sibling();
-  curr_node = cursor.node();
-  curr_kind = curr_node.kind();
-
-  if curr_kind != ROOT_MATCH {
-    return Err("Expecting a block".to_owned());
-  }
-
-  let (root_match, errors) = parse_match_body(None, curr_node, source_bytes);
-
-  let firestore_tree = FirestoreTree::new(root_match);
-
-  Ok(EvaluatedTree::new(firestore_tree, errors))
+  EvaluatedTree::new(firestore_tree, level_errors)
 }
 
 fn parse_match_body<'a, 'b>(
@@ -135,7 +117,7 @@ fn parse_function<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Function, Vec<Err
     .children(&mut cursor)
     .for_each(|child| match child.kind() {
       _ if child.is_missing() => level_errors.push(ErrorNode::new(child, source_bytes)),
-      "name" => name = child.utf8_text(source_bytes).unwrap(),
+      "function_name" => name = child.utf8_text(source_bytes).unwrap(),
       "param" => parms.push(Identifier::new(
         child.utf8_text(source_bytes).unwrap(),
         child,
@@ -286,15 +268,21 @@ fn parse_function_call<'b>(
   node: Node<'b>,
   source_bytes: &[u8],
 ) -> (Option<ExprNode>, Vec<ErrorNode>) {
-  let name = node.child(0).unwrap().utf8_text(source_bytes).unwrap();
   let mut level_errors = vec![];
 
   let mut arg = None;
+  let mut name = None;
 
   node
     .children(&mut node.walk())
     .for_each(|child| match child.kind() {
       _ if child.is_missing() => level_errors.push(ErrorNode::new(child, source_bytes)),
+      "function_calling_name" => {
+        name = Some(Identifier::new(
+          child.utf8_text(source_bytes).unwrap(),
+          child,
+        ));
+      }
       "expr_list" => {
         let mut res = parse_expr_list(child, source_bytes);
         arg = Some(FunctionArgument::ExprList(res.0));
@@ -310,10 +298,7 @@ fn parse_function_call<'b>(
     });
 
   (
-    Some(ExprNode::new(
-      Expr::FunctionCall(name.to_owned(), arg),
-      node,
-    )),
+    Some(ExprNode::new(Expr::FunctionCall(name.unwrap(), arg), node)),
     level_errors,
   )
 }
@@ -335,7 +320,7 @@ fn parse_path<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Vec<PathSegment>, Vec
             _ if child.is_missing() => level_errors.push(ErrorNode::new(child, source_bytes)),
             "identifier" => {
               let name = child.utf8_text(source_bytes).unwrap();
-              path_segments.push(PathSegment::String(name.to_owned()))
+              path_segments.push(PathSegment::String(Identifier::new(name, node)))
             }
             "expr" => {
               let mut expr = parse_expr(child, source_bytes);
