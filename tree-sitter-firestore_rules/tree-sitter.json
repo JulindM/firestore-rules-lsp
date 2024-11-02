@@ -10,7 +10,7 @@
     }
   ],
   "metadata": {
-    "version": "0.1.0",
+    "version": "0.0.1",
     "license": "GPL",
     "description": "Parser for the Firestore Rules Language",
     "authors": [
