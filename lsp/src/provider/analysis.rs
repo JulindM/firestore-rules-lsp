@@ -1,6 +1,24 @@
+use lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
 use tree_sitter::Point;
 
-use crate::parser::base::{BaseModel, Children, Expr, MatchPathPartType, ToBaseModel};
+use crate::parser::{
+  base::{BaseModel, Children, Expr, MatchPathPartType, ToBaseModel},
+  extensions::EvaluatedTree,
+};
+
+pub fn to_point(position: Position) -> Point {
+  Point::new(
+    position.line.try_into().unwrap(),
+    position.character.try_into().unwrap(),
+  )
+}
+
+pub fn to_position(point: Point) -> Position {
+  Position::new(
+    point.row.try_into().unwrap(),
+    point.column.try_into().unwrap(),
+  )
+}
 
 pub fn try_find_definition<'a>(traversal: &Vec<BaseModel<'a>>) -> Option<BaseModel<'a>> {
   if traversal.len() < 2 {
@@ -70,39 +88,22 @@ pub fn try_find_definition<'a>(traversal: &Vec<BaseModel<'a>>) -> Option<BaseMod
 }
 
 pub fn get_lowest_denominator<'a>(
-  position: Point,
+  position: Position,
   nestable: &'a dyn Children<'a>,
 ) -> Vec<BaseModel<'a>> {
-  if !nestable.contains(position) {
+  let point = to_point(position);
+
+  if !nestable.contains(point) {
     return vec![];
   }
 
-  eprintln!(
-    "I am {}, spanning {:?} looking for {:?}",
-    nestable.to_base_model().type_str(),
-    nestable.to_base_model().span(),
-    position,
-  );
   let mut res = vec![nestable.to_base_model()];
 
   let children = nestable.children();
 
-  eprintln!(
-    "I have {}",
-    children
-      .iter()
-      .map(|c| c.to_base_model().type_str().to_owned())
-      .collect::<Vec<String>>()
-      .join(", ")
-  );
-
-  let child_hit = children.into_iter().find(|el| el.contains(position));
+  let child_hit = children.into_iter().find(|el| el.contains(point));
 
   if child_hit.is_none() {
-    eprintln!(
-      "No child hit for {} so it must be me left",
-      nestable.to_base_model().type_str()
-    );
     return res;
   }
 
@@ -111,4 +112,27 @@ pub fn get_lowest_denominator<'a>(
   res.append(&mut inner_hit);
 
   res
+}
+
+pub fn build_diagnostics(tree: &EvaluatedTree) -> Vec<Diagnostic> {
+  let mut errors: Vec<Diagnostic> = vec![];
+
+  for err_node in tree.error_nodes() {
+    errors.push(Diagnostic {
+      range: Range {
+        start: to_position(err_node.start()),
+        end: to_position(err_node.end()),
+      },
+      severity: Some(DiagnosticSeverity::ERROR),
+      code: None,
+      code_description: None,
+      source: None,
+      message: "Error".to_string(),
+      related_information: None,
+      tags: None,
+      data: None,
+    });
+  }
+
+  errors
 }

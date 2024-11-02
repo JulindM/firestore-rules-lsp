@@ -76,6 +76,7 @@ impl<'a> BaseModel<'a> {
         Expr::FunctionCall(_, _) => "FunctionCall",
         Expr::Literal(_) => "Literal",
         Expr::Variable(_) => "Variable",
+        Expr::List(_) => "List",
       },
       BaseModel::Identifier(_) => "Identifier",
       BaseModel::Literal(_) => "Literal",
@@ -699,6 +700,7 @@ pub enum Expr {
   FunctionCall(Identifier, Vec<FunctionArgument>),
   Literal(Literal),
   Variable(Identifier),
+  List(Vec<ExprNode>),
 }
 
 #[derive(Debug, Clone)]
@@ -734,10 +736,7 @@ impl<'a> Children<'a> for ExprNode {
       Expr::Ternary(expr_node, expr_node1, expr_node2) => {
         resolve_expr_nest(vec![expr_node, expr_node1, expr_node2])
       }
-      Expr::Member(expr_node, expr_node1) => {
-        eprintln!("Chilren of member: {:?}, {:?}", expr_node, expr_node);
-        resolve_expr_nest(vec![expr_node, expr_node1])
-      }
+      Expr::Member(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::Indexing(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::FunctionCall(name, function_arguments) => {
         let mut res: Vec<&dyn Children<'a>> = vec![name];

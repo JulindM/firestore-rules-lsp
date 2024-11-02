@@ -17,6 +17,14 @@ impl ErrorNode {
       end: node.end_position(),
     }
   }
+
+  pub fn start(&self) -> Point {
+    self.start
+  }
+
+  pub fn end(&self) -> Point {
+    self.end
+  }
 }
 
 #[derive(Debug)]

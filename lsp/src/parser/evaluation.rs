@@ -238,16 +238,34 @@ fn parse_primary<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Option<ExprNode>, 
     "variable" => parse_variable(child, source_bytes),
     "expr_group" => parse_expr(child.child(1).unwrap(), source_bytes),
     "function_call" => parse_function_call(child, source_bytes),
-    "list" => {
-      let expr_list = child.child(1);
-      match expr_list {
-        None => (None, vec![]),
-        Some(node) => parse_expr(node, source_bytes),
-      }
-    }
+    "list" => parse_list(child, source_bytes),
     _ if child.is_error() => (None, vec![ErrorNode::new(child, source_bytes)]),
     _ => (None, vec![]),
   }
+}
+
+fn parse_list<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Option<ExprNode>, Vec<ErrorNode>) {
+  let mut level_errors = vec![];
+  let mut list_elements = vec![];
+
+  for child in sanitized_children!(node) {
+    match child.kind() {
+      "expr" => {
+        let mut res = parse_expr(child, source_bytes);
+        if res.0.is_some() {
+          list_elements.push(res.0.unwrap());
+        }
+        level_errors.append(&mut res.1);
+      }
+      _ if child.is_error() => level_errors.push(ErrorNode::new(child, source_bytes)),
+      _ => continue,
+    }
+  }
+
+  (
+    Some(ExprNode::new(Expr::List(list_elements), node)),
+    level_errors,
+  )
 }
 
 fn parse_function_call<'b>(
@@ -410,19 +428,36 @@ fn parse_indexing<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Option<ExprNode>,
     return (None, vec![ErrorNode::new(node, source_bytes)]);
   }
 
-  let object;
-  let index;
   let mut level_errors = vec![];
 
-  object = parse_expr(children[0], source_bytes);
-  index = parse_expr(children[2], source_bytes);
+  let object_node = &children[0];
 
-  let expr = Expr::Indexing(object.0.map(Box::new), index.0.map(Box::new));
+  let object = match object_node.kind() {
+    "primary" => {
+      let mut res = parse_primary(*object_node, source_bytes);
 
-  level_errors = [level_errors, object.1, index.1]
-    .into_iter()
-    .flatten()
-    .collect();
+      level_errors.append(&mut res.1);
+      res.0
+    }
+    "member" => {
+      let mut res = parse_member(*object_node, source_bytes);
+      level_errors.append(&mut res.1);
+      res.0
+    }
+    _ => None,
+  };
+
+  let field_node = &children[2];
+  let field = match field_node.kind() {
+    "expr" => {
+      let mut res = parse_variable(*field_node, source_bytes);
+      level_errors.append(&mut res.1);
+      res.0
+    }
+    _ => None,
+  };
+
+  let expr = Expr::Indexing(object.map(Box::new), field.map(Box::new));
 
   (Some(ExprNode::new(expr, node)), level_errors)
 }
@@ -583,26 +618,25 @@ fn parse_unary<'b>(node: Node<'b>, source_bytes: &[u8]) -> (Option<ExprNode>, Ve
   }
 
   let operation;
-  let operator;
+  let expr_res;
   let mut level_errors = vec![];
 
-  operator = parse_expr(children[1], source_bytes);
+  expr_res = parse_expr(children[1], source_bytes);
 
   let op_node = children[0];
 
   operation = match op_node.kind() {
-    "negation" => Some(Operation::Negation),
-    "substraction" => Some(Operation::Substraction),
-    "&&" => Some(Operation::And),
+    "!" => Some(Operation::Negation),
+    "-" => Some(Operation::Substraction),
     _ => {
       level_errors.push(ErrorNode::new(op_node, source_bytes));
       None
     }
   };
 
-  let expr = Expr::Unary(operation, operator.0.map(Box::new));
+  let expr = Expr::Unary(operation, expr_res.0.map(Box::new));
 
-  level_errors = [level_errors, operator.1].into_iter().flatten().collect();
+  level_errors = [level_errors, expr_res.1].into_iter().flatten().collect();
 
   (Some(ExprNode::new(expr, node)), level_errors)
 }

@@ -1,15 +1,15 @@
 use lsp_server::{Connection, ExtractError, Message, Notification, Request, RequestId, Response};
+use lsp_types::notification::*;
 use lsp_types::*;
-use notification::{DidChangeTextDocument, DidOpenTextDocument};
 use request::*;
 
 use std::{collections::HashMap, error::Error};
-use tree_sitter::{Parser, Point, Tree};
+use tree_sitter::{Parser, Tree};
 
 use crate::{
   parser::{base::MatchBody, evaluation::evaluate_tree, extensions::EvaluatedTree},
   provider::{
-    analysis::{get_lowest_denominator, try_find_definition},
+    analysis::{build_diagnostics, get_lowest_denominator, to_position, try_find_definition},
     tokenizer::{get_used_semantic_token_modifiers, get_used_semantic_token_types, tokenize},
   },
   StartUpType,
@@ -33,7 +33,7 @@ pub fn start_server(startup_type: StartUpType, mut parser: Parser) -> Result<(),
     semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
       SemanticTokensOptions {
         work_done_progress_options: WorkDoneProgressOptions {
-          work_done_progress: None,
+          work_done_progress: Some(false),
         },
         legend: SemanticTokensLegend {
           token_types: get_used_semantic_token_types(),
@@ -96,12 +96,14 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
         continue;
       }
       Message::Notification(not) => {
-        if let Ok(did_open) = cast_not::<DidOpenTextDocument>(&not) {
+        if let Ok(did_open) = cast_notif::<DidOpenTextDocument>(&not) {
           open_doc(&did_open, parser, &mut evaulated_trees);
+          publish_diagnostics(&did_open.text_document.uri, &evaulated_trees, &connection);
         }
 
-        if let Ok(did_change) = cast_not::<DidChangeTextDocument>(&not) {
+        if let Ok(did_change) = cast_notif::<DidChangeTextDocument>(&not) {
           change_doc(&did_change, parser, &mut evaulated_trees);
+          publish_diagnostics(&did_change.text_document.uri, &evaulated_trees, &connection);
         }
 
         continue;
@@ -110,6 +112,22 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
   }
 
   Ok(())
+}
+
+fn publish_diagnostics(
+  text_document_uri: &Uri,
+  evaulated_trees: &HashMap<String, (EvaluatedTree, Tree)>,
+  connection: &Connection,
+) -> () {
+  let (ev_tree, _) = evaulated_trees.find(text_document_uri);
+  let diagnostics = build_diagnostics(ev_tree);
+
+  let _ = connection
+    .sender
+    .send(Message::Notification(Notification::new(
+      "textDocument/publishDiagnostics".to_owned(),
+      PublishDiagnosticsParams::new(text_document_uri.to_owned(), diagnostics.clone(), None),
+    )));
 }
 
 fn open_doc(
@@ -162,7 +180,7 @@ fn handle_go_to_definition(
     }
   };
 
-  let traversal = get_lowest_denominator(to_point(definition_param.position), body);
+  let traversal = get_lowest_denominator(definition_param.position, body);
 
   let definition = try_find_definition(&traversal);
 
@@ -189,9 +207,9 @@ fn handle_go_to_definition(
 
 fn try_get_body<'a>(
   evaulated_trees: &'a HashMap<String, (EvaluatedTree, Tree)>,
-  doc_id: &TextDocumentIdentifier,
+  doc: &TextDocumentIdentifier,
 ) -> Option<&'a MatchBody> {
-  let (ev_tree, _) = evaulated_trees.find(doc_id);
+  let (ev_tree, _) = evaulated_trees.find(&doc.uri);
 
   let firestore_tree = ev_tree.tree();
 
@@ -224,7 +242,7 @@ fn handle_hover(
     }
   };
 
-  let traversal_list = get_lowest_denominator(to_point(hover_params.position), body);
+  let traversal_list = get_lowest_denominator(hover_params.position, body);
 
   let traversal: String = traversal_list
     .into_iter()
@@ -254,7 +272,7 @@ fn handle_tokenize_request(
   connection: &Connection,
 ) -> () {
   let tokenize_params = tokenize_r.1;
-  let (_, tree) = evaulated_trees.find(&tokenize_params.text_document);
+  let (_, tree) = evaulated_trees.find(&tokenize_params.text_document.uri);
 
   let tokenization_result = tokenize(&tree);
 
@@ -277,7 +295,7 @@ where
   req.clone().extract::<R::Params>(R::METHOD)
 }
 
-fn cast_not<N>(not: &Notification) -> Result<N::Params, ExtractError<Notification>>
+fn cast_notif<N>(not: &Notification) -> Result<N::Params, ExtractError<Notification>>
 where
   N: lsp_types::notification::Notification,
   N::Params: serde::de::DeserializeOwned,
@@ -286,26 +304,11 @@ where
 }
 
 trait Find {
-  fn find<'a>(&'a self, text_document: &TextDocumentIdentifier) -> &'a (EvaluatedTree, Tree);
+  fn find<'a>(&'a self, uri: &Uri) -> &'a (EvaluatedTree, Tree);
 }
 
 impl Find for LSPTreeStorage {
-  fn find<'a>(&'a self, text_document: &TextDocumentIdentifier) -> &'a (EvaluatedTree, Tree) {
-    let id = text_document.uri.as_str();
-    &self[id]
+  fn find<'a>(&'a self, uri: &Uri) -> &'a (EvaluatedTree, Tree) {
+    &self[uri.as_str()]
   }
-}
-
-fn to_point(position: Position) -> Point {
-  Point::new(
-    position.line.try_into().unwrap(),
-    position.character.try_into().unwrap(),
-  )
-}
-
-fn to_position(point: Point) -> Position {
-  Position::new(
-    point.row.try_into().unwrap(),
-    point.column.try_into().unwrap(),
-  )
 }
