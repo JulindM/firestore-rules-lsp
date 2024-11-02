@@ -7,7 +7,8 @@ module.exports = grammar({
   extras: ($) => [$.comment, /\s/],
 
   rules: {
-    source_file: ($) => seq(optional($.rules_version_def), $.service_name, $.match_body),
+    source_file: ($) =>
+      seq(optional($.rules_version_def), $.service_name, $.match_body),
 
     rules_version_def: ($) => seq("rules_version", "=", $.string, ";"),
 
@@ -55,8 +56,7 @@ module.exports = grammar({
     escape_sequence: (_) =>
       token.immediate(seq("\\", choice("\\", "?", '"', "'", "`"))),
 
-    path_segment: ($) =>
-      choice($.identifier, seq("$(", $.expr, ")")),
+    path_segment: ($) => choice($.identifier, seq("$(", $.expr, ")")),
 
     path: ($) => repeat1(seq("/", $.path_segment)),
 
@@ -68,7 +68,9 @@ module.exports = grammar({
         seq(
           alias($.identifier, "function_calling_name"),
           token.immediate("("),
-          optional(seq($.function_argument, repeat(seq(",", $.function_argument)))),
+          optional(
+            seq($.function_argument, repeat(seq(",", $.function_argument)))
+          ),
           ")"
         )
       ),
@@ -77,7 +79,14 @@ module.exports = grammar({
 
     expr_group: ($) => seq("(", $.expr, ")"),
 
-    list: ($) => seq("[", optional($.expr_list), "]"),
+    list: ($) =>
+      seq(
+        "[",
+        optional(
+          seq($.expr, repeat(seq(",", $.expr)))
+        ),
+        "]"
+      ),
 
     primary: ($) =>
       choice($.literal, $.variable, $.expr_group, $.list, $.function_call),
@@ -90,7 +99,7 @@ module.exports = grammar({
         8,
         seq(
           choice($.member, $.primary),
-          token.immediate("."),
+          ".",
           choice($.variable, $.function_call)
         )
       ),
@@ -98,43 +107,25 @@ module.exports = grammar({
     unary: ($) =>
       prec.right(
         7,
-        choice(
-          seq(repeat1("!"), $.expr),
-          seq(repeat1("-"), $.expr),
-        )
+        choice(seq(repeat1("!"), $.expr), seq(repeat1("-"), $.expr))
       ),
-
-    mult_op: (_) => choice("*", "/", "%"),
 
     multiplication: ($) =>
-      prec.left(
-        6,
-        seq($.expr, $.mult_op, $.expr)
-      ),
+      prec.left(6, seq($.expr, choice("*", "/", "%"), $.expr)),
 
     addition: ($) => prec.left(5, seq($.expr, choice("+", "-"), $.expr)),
 
-    relation_op: (_) => choice("<", "<=", ">=", ">", "==", "!=", "in"),
-
-    relation: ($) => prec.left(4, seq($.expr, $.relation_op, $.expr)),
-
-    conditional_and: ($) =>
-      prec.left(3, seq($.expr, "&&", $.expr)),
-
-    conditional_or: ($) =>
-      prec.left(2, seq($.expr, "||", $.expr)),
-
-    ternary: ($) =>
-      prec.right(
-        1,
-        seq(
-          $.expr,
-          "?",
-          $.expr,
-          ":",
-          $.expr
-        )
+    relation: ($) =>
+      prec.left(
+        4,
+        seq($.expr, choice("<", "<=", ">=", ">", "==", "!=", "in"), $.expr)
       ),
+
+    conditional_and: ($) => prec.left(3, seq($.expr, "&&", $.expr)),
+
+    conditional_or: ($) => prec.left(2, seq($.expr, "||", $.expr)),
+
+    ternary: ($) => prec.right(1, seq($.expr, "?", $.expr, ":", $.expr)),
 
     expr: ($) =>
       choice(
@@ -149,8 +140,6 @@ module.exports = grammar({
         $.indexing,
         $.primary
       ),
-
-    expr_list: ($) => seq($.expr, repeat(seq(",", $.expr))),
 
     variable_def: ($) => seq("let", $.variable, "=", $.expr, ";"),
 
@@ -171,9 +160,9 @@ module.exports = grammar({
         "}"
       ),
 
-    collection_path_seg: (_) => /\/[a-zA-Z]+/,
-    single_path_seg: (_) => /\/\{[a-zA-Z]+\}/,
-    multi_path_seg: (_) => /\/\{[a-zA-Z]+=\*\*\}/,
+    collection_path_seg: (_) => /\/[_a-zA-Z][_a-zA-Z0-9]*/,
+    single_path_seg: (_) => /\/\{[_a-zA-Z][_a-zA-Z0-9]*\}/,
+    multi_path_seg: (_) => /\/\{[_a-zA-Z][_a-zA-Z0-9]*=\*\*\}/,
 
     match_path: ($) =>
       repeat1(

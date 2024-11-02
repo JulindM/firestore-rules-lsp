@@ -111,21 +111,6 @@
     }
   },
   {
-    "type": "expr_list",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "expr",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "function_argument",
     "named": true,
     "fields": {},
@@ -221,11 +206,11 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": false,
       "types": [
         {
-          "type": "expr_list",
+          "type": "expr",
           "named": true
         }
       ]
@@ -352,11 +337,6 @@
     "fields": {}
   },
   {
-    "type": "mult_op",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "multiplication",
     "named": true,
     "fields": {},
@@ -366,10 +346,6 @@
       "types": [
         {
           "type": "expr",
-          "named": true
-        },
-        {
-          "type": "mult_op",
           "named": true
         }
       ]
@@ -466,18 +442,9 @@
         {
           "type": "expr",
           "named": true
-        },
-        {
-          "type": "relation_op",
-          "named": true
         }
       ]
     }
-  },
-  {
-    "type": "relation_op",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "rule_def",
