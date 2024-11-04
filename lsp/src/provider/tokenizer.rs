@@ -16,7 +16,7 @@ pub fn tokenize<'a>(tree: &Tree) -> Vec<SemanticToken> {
     });
   }
 
-  if absolute_tokenization.len() == 1 {
+  if absolute_tokenization.len() <= 1 {
     return semantic_tokens;
   }
 

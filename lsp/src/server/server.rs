@@ -119,12 +119,19 @@ fn publish_diagnostics(
   evaulated_trees: &HashMap<String, (EvaluatedTree, Tree)>,
   connection: &Connection,
 ) -> () {
-  let (ev_tree, _) = evaulated_trees.find(text_document_uri);
-  let diagnostics = build_diagnostics(ev_tree);
+  let find = evaulated_trees.get(text_document_uri.as_str());
+
+  if find.is_none() {
+    return;
+  }
+
+  let (_, tree) = find.unwrap();
+
+  let diagnostics = build_diagnostics(tree);
 
   let _ = connection
     .sender
-    .send(Message::Notification(Notification::new(
+    .try_send(Message::Notification(Notification::new(
       "textDocument/publishDiagnostics".to_owned(),
       PublishDiagnosticsParams::new(text_document_uri.to_owned(), diagnostics.clone(), None),
     )));
@@ -135,15 +142,21 @@ fn open_doc(
   parser: &mut Parser,
   evaulated_trees: &mut LSPTreeStorage,
 ) {
-  // FIXME What if one these returns none
-  let content = did_open.text_document.text.clone();
+  let text = &did_open.text_document.text;
 
-  let parsed_tree = parser.parse(content.clone(), None).unwrap();
-  let evaluated_tree = evaluate_tree(parsed_tree.clone(), content.as_bytes());
+  let parsed_tree_opt = parser.parse(text.clone(), None);
+
+  if parsed_tree_opt.is_none() {
+    return;
+  }
+
+  let tree = parsed_tree_opt.unwrap();
+
+  let evaluated_tree = evaluate_tree(tree.clone(), text.as_bytes());
 
   evaulated_trees.insert(
     did_open.text_document.uri.to_string(),
-    (evaluated_tree, parsed_tree),
+    (evaluated_tree, tree),
   );
 }
 
@@ -152,15 +165,27 @@ fn change_doc(
   parser: &mut Parser,
   evaulated_trees: &mut LSPTreeStorage,
 ) {
-  // FIXME What if one these returns none
-  let content = &did_change.content_changes.last().unwrap().text;
+  let content = &did_change.content_changes.last();
 
-  let parsed_tree = parser.parse(content.clone(), None).unwrap();
-  let evaluated_tree = evaluate_tree(parsed_tree.clone(), content.as_bytes());
+  if content.is_none() {
+    return;
+  }
+
+  let text = content.cloned().unwrap().text;
+
+  let parsed_tree_opt = parser.parse(text.clone(), None);
+
+  if parsed_tree_opt.is_none() {
+    return;
+  }
+
+  let tree = parsed_tree_opt.unwrap();
+
+  let evaluated_tree = evaluate_tree(tree.clone(), text.as_bytes());
 
   evaulated_trees.insert(
     did_change.text_document.uri.to_string(),
-    (evaluated_tree, parsed_tree),
+    (evaluated_tree, tree),
   );
 }
 
@@ -185,10 +210,12 @@ fn handle_go_to_definition(
   let definition = try_find_definition(&traversal);
 
   if definition.is_none() {
-    let _ = connection.sender.send(Message::Response(Response::new_ok(
-      req.id.clone(),
-      "No definition found",
-    )));
+    let _ = connection
+      .sender
+      .try_send(Message::Response(Response::new_ok(
+        req.id.clone(),
+        "No definition found",
+      )));
     return;
   }
 
@@ -201,15 +228,20 @@ fn handle_go_to_definition(
 
   let msg = Response::new_ok::<GotoDefinitionResponse>(req.id, definition_resp);
 
-  // FIXME What if this errors out
-  let _ = connection.sender.send(Message::Response(msg));
+  let _ = connection.sender.try_send(Message::Response(msg));
 }
 
 fn try_get_body<'a>(
   evaulated_trees: &'a HashMap<String, (EvaluatedTree, Tree)>,
   doc: &TextDocumentIdentifier,
 ) -> Option<&'a MatchBody> {
-  let (ev_tree, _) = evaulated_trees.find(&doc.uri);
+  let find = evaulated_trees.get(doc.uri.as_str());
+
+  if find.is_none() {
+    return None;
+  }
+
+  let (ev_tree, _) = find.unwrap();
 
   let firestore_tree = ev_tree.tree();
 
@@ -261,8 +293,7 @@ fn handle_hover(
 
   let msg = Response::new_ok::<Hover>(req.id, hover);
 
-  // FIXME What if this errors out
-  let _ = connection.sender.send(Message::Response(msg));
+  let _ = connection.sender.try_send(Message::Response(msg));
 }
 
 fn handle_tokenize_request(
@@ -272,7 +303,14 @@ fn handle_tokenize_request(
   connection: &Connection,
 ) -> () {
   let tokenize_params = tokenize_r.1;
-  let (_, tree) = evaulated_trees.find(&tokenize_params.text_document.uri);
+
+  let find = evaulated_trees.get(tokenize_params.text_document.uri.as_str());
+
+  if find.is_none() {
+    return;
+  }
+
+  let (_, tree) = find.unwrap();
 
   let tokenization_result = tokenize(&tree);
 
@@ -283,8 +321,7 @@ fn handle_tokenize_request(
 
   let msg = Response::new_ok::<SemanticTokensResult>(req.id, tokenize_msg);
 
-  // FIXME What if this errors out
-  let _ = connection.sender.send(Message::Response(msg));
+  let _ = connection.sender.try_send(Message::Response(msg));
 }
 
 fn cast_req<R>(req: &Request) -> Result<(RequestId, R::Params), ExtractError<Request>>
@@ -301,14 +338,4 @@ where
   N::Params: serde::de::DeserializeOwned,
 {
   not.clone().extract(N::METHOD)
-}
-
-trait Find {
-  fn find<'a>(&'a self, uri: &Uri) -> &'a (EvaluatedTree, Tree);
-}
-
-impl Find for LSPTreeStorage {
-  fn find<'a>(&'a self, uri: &Uri) -> &'a (EvaluatedTree, Tree) {
-    &self[uri.as_str()]
-  }
 }

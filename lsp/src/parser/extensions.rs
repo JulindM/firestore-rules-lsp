@@ -2,17 +2,25 @@ use tree_sitter::{Node, Point};
 
 use super::base::FirestoreTree;
 
-#[derive(Debug)]
-pub struct ErrorNode {
+#[derive(Debug, Clone)]
+pub enum ErrorNodeType {
+  Error,
+  Missing,
+}
+
+#[derive(Debug, Clone)]
+pub struct SemanticError {
   content: String,
+  error_type: ErrorNodeType,
   start: Point,
   end: Point,
 }
 
-impl ErrorNode {
-  pub fn new<'b>(node: Node<'b>, source: &[u8]) -> Self {
+impl SemanticError {
+  pub fn new<'b>(node: Node<'b>, error_type: ErrorNodeType, source: &[u8]) -> Self {
     Self {
       content: node.utf8_text(source).unwrap_or("").to_owned(),
+      error_type,
       start: node.start_position(),
       end: node.end_position(),
     }
@@ -30,19 +38,19 @@ impl ErrorNode {
 #[derive(Debug)]
 pub struct EvaluatedTree {
   tree: Option<FirestoreTree>,
-  error_nodes: Vec<ErrorNode>,
+  semantic_errors: Vec<SemanticError>,
 }
 
 impl EvaluatedTree {
-  pub fn new(tree: Option<FirestoreTree>, errors: Vec<ErrorNode>) -> Self {
+  pub fn new(tree: Option<FirestoreTree>, errors: Vec<SemanticError>) -> Self {
     Self {
       tree: tree.clone(),
-      error_nodes: errors,
+      semantic_errors: errors,
     }
   }
 
-  pub fn error_nodes(&self) -> &[ErrorNode] {
-    &self.error_nodes
+  pub fn semantic_errors(&self) -> &[SemanticError] {
+    &self.semantic_errors
   }
 
   pub fn tree(&self) -> Option<&FirestoreTree> {

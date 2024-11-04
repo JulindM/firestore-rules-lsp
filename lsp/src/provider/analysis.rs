@@ -1,10 +1,9 @@
-use lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
-use tree_sitter::Point;
+use lsp_types::{Diagnostic, Position};
+use tree_sitter::{Point, Tree};
 
-use crate::parser::{
-  base::{BaseModel, Children, Expr, MatchPathPartType, ToBaseModel},
-  extensions::EvaluatedTree,
-};
+use crate::parser::base::{BaseModel, Children, Expr, MatchPathPartType, ToBaseModel};
+
+use super::diagnoser::diagnose_synatx_errors;
 
 pub fn to_point(position: Position) -> Point {
   Point::new(
@@ -114,25 +113,12 @@ pub fn get_lowest_denominator<'a>(
   res
 }
 
-pub fn build_diagnostics(tree: &EvaluatedTree) -> Vec<Diagnostic> {
-  let mut errors: Vec<Diagnostic> = vec![];
+pub fn build_diagnostics(tree: &Tree) -> Vec<Diagnostic> {
+  let mut diagnostics: Vec<Diagnostic> = vec![];
 
-  for err_node in tree.error_nodes() {
-    errors.push(Diagnostic {
-      range: Range {
-        start: to_position(err_node.start()),
-        end: to_position(err_node.end()),
-      },
-      severity: Some(DiagnosticSeverity::ERROR),
-      code: None,
-      code_description: None,
-      source: None,
-      message: "Error".to_string(),
-      related_information: None,
-      tags: None,
-      data: None,
-    });
-  }
+  let mut syntax_errors = diagnose_synatx_errors(tree.root_node());
 
-  errors
+  diagnostics.append(&mut syntax_errors);
+
+  diagnostics
 }
