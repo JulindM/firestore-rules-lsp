@@ -143,7 +143,9 @@ module.exports = grammar({
 
     variable_def: ($) => seq("let", $.variable, "=", $.expr, ";"),
 
-    function_body: ($) => seq(repeat($.variable_def), "return", $.expr, ";"),
+    fun_return: ($) => seq("return", $.expr, ";"),
+
+    function_body: ($) => seq("{", repeat($.variable_def), $.fun_return, "}"),
 
     function_def: ($) =>
       seq(
@@ -155,9 +157,7 @@ module.exports = grammar({
           "param"
         ),
         ")",
-        "{",
         $.function_body,
-        "}"
       ),
 
     collection_path_seg: (_) => /\/[_a-zA-Z][_a-zA-Z0-9]*/,
@@ -183,6 +183,6 @@ module.exports = grammar({
     match_def: ($) => seq("match", $.match_path, $.match_body),
 
     match_body: ($) =>
-      seq("{", repeat1(choice($.function_def, $.match_def, $.rule_def)), "}"),
+      seq("{", repeat(choice($.function_def, $.match_def, $.rule_def)), "}"),
   },
 });

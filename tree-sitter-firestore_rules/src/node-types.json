@@ -111,6 +111,21 @@
     }
   },
   {
+    "type": "fun_return",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "function_argument",
     "named": true,
     "fields": {},
@@ -138,7 +153,7 @@
       "required": true,
       "types": [
         {
-          "type": "expr",
+          "type": "fun_return",
           "named": true
         },
         {
@@ -245,7 +260,7 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "function_def",
