@@ -1,0 +1,60 @@
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      lsp_version:
+        description: "LSP Version"
+        required: true
+        type: string
+
+env:
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build_windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update
+      - run: cd lsp && cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firestore-rules-lsp-${{  inputs.lsp_version  }}-win_x64
+          path: lsp\target\release\firestore-rules-lsp.exe
+
+  build_linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update
+      - run: cd lsp && cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firestore-rules-lsp-${{  inputs.lsp_version  }}-linux_x64
+          path: lsp/target/release/firestore-rules-lsp
+          overwrite: true
+
+  build_macos_intel:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update
+      - run: cd lsp && cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firestore-rules-lsp-${{  inputs.lsp_version  }}-mac_x64
+          path: lsp/target/release/firestore-rules-lsp
+          overwrite: true
+
+  build_macos_arm:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update
+      - run: cd lsp && cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firestore-rules-lsp-${{  inputs.lsp_version  }}-mac_arm64
+          path: lsp/target/release/firestore-rules-lsp
+          overwrite: true
