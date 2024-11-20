@@ -1,9 +1,11 @@
 use lsp_types::{Diagnostic, Position};
 use tree_sitter::{Point, Tree};
 
-use crate::parser::base::{BaseModel, Children, Expr, MatchPathPartType, ToBaseModel};
+use crate::parser::base::{
+  BaseModel, Children, Expr, FirestoreTree, MatchPathPartType, ToBaseModel,
+};
 
-use super::diagnoser::diagnose_synatx_errors;
+use super::diagnoser::{diagnose_linting_errors, diagnose_syntax_errors};
 
 pub fn to_point(position: Position) -> Point {
   Point::new(
@@ -19,12 +21,12 @@ pub fn to_position(point: Point) -> Position {
   )
 }
 
-pub fn try_find_definition<'a>(traversal: &Vec<BaseModel<'a>>) -> Option<BaseModel<'a>> {
-  if traversal.len() < 2 {
+pub fn try_find_definition<'a>(traversing_path: &Vec<&BaseModel<'a>>) -> Option<BaseModel<'a>> {
+  if traversing_path.len() < 2 {
     return None;
   }
 
-  let mut reverse_traversal = traversal.clone();
+  let mut reverse_traversal = traversing_path.clone();
   reverse_traversal.reverse();
 
   let innermost_identifiable = reverse_traversal.iter().enumerate().find(|el| match el {
@@ -113,12 +115,18 @@ pub fn get_lowest_denominator<'a>(
   res
 }
 
-pub fn build_diagnostics(tree: &Tree) -> Vec<Diagnostic> {
+pub fn build_diagnostics(tree: &Tree, firestore_tree: Option<&FirestoreTree>) -> Vec<Diagnostic> {
   let mut diagnostics: Vec<Diagnostic> = vec![];
 
-  let mut syntax_errors = diagnose_synatx_errors(tree.root_node());
+  let mut syntax_errors = diagnose_syntax_errors(tree.root_node());
+
+  let mut linting_warnings = vec![];
+  if firestore_tree.is_some() {
+    linting_warnings = diagnose_linting_errors(firestore_tree.unwrap());
+  }
 
   diagnostics.append(&mut syntax_errors);
+  diagnostics.append(&mut linting_warnings);
 
   diagnostics
 }

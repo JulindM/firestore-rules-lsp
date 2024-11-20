@@ -1,9 +1,13 @@
+use std::iter::Inspect;
+
 use lsp_types::{Diagnostic, DiagnosticSeverity, Range};
 use tree_sitter::Node;
 
-use super::analysis::to_position;
+use crate::parser::base::{BaseModel, Children, FirestoreTree, ToBaseModel};
 
-pub fn diagnose_synatx_errors<'a>(node: Node<'a>) -> Vec<Diagnostic> {
+use super::analysis::{to_position, try_find_definition};
+
+pub fn diagnose_syntax_errors<'a>(node: Node<'a>) -> Vec<Diagnostic> {
   let mut errors: Vec<Diagnostic> = vec![];
   let mut level_cursor = node.walk();
 
@@ -18,7 +22,7 @@ pub fn diagnose_synatx_errors<'a>(node: Node<'a>) -> Vec<Diagnostic> {
 
       if curr_node_children.len() != 0 {
         for child in curr_node_children {
-          let mut child_errors = diagnose_synatx_errors(child);
+          let mut child_errors = diagnose_syntax_errors(child);
           errors.append(&mut child_errors);
         }
       }
@@ -75,4 +79,74 @@ fn is_parse_error<'a>(node: Node<'a>) -> Option<Node<'a>> {
   };
 
   None
+}
+
+pub fn diagnose_linting_errors<'a>(tree: &FirestoreTree) -> Vec<Diagnostic> {
+  if tree.body().is_none() {
+    return vec![];
+  }
+
+  let body = tree.body().unwrap();
+  diagnose(body, vec![])
+}
+
+pub fn diagnose<'a, 'b>(
+  nestable: &'b dyn Children<'b>,
+  traversal_list: Vec<&BaseModel<'a>>,
+) -> Vec<Diagnostic> {
+  let mut curr_diagnostics: Vec<Diagnostic> = vec![];
+
+  let inspection = inspect(&nestable.to_base_model(), &traversal_list);
+
+  if let Some(diagnostic) = inspection {
+    curr_diagnostics.push(diagnostic);
+  }
+
+  for child in nestable.children() {
+    let mut new_traversal = traversal_list.clone();
+    let base_model = child.to_base_model();
+
+    new_traversal.push(&base_model);
+
+    let mut child_diagnostic = diagnose(child, new_traversal);
+    curr_diagnostics.append(&mut child_diagnostic);
+  }
+
+  curr_diagnostics
+}
+
+fn inspect<'a, 'b>(
+  model: &BaseModel<'b>,
+  traversal_list: &'a Vec<&BaseModel<'a>>,
+) -> Option<Diagnostic> {
+  let mut path_traversal = traversal_list.clone();
+  path_traversal.push(model);
+
+  match model.type_str() {
+    "FunctionCall" => {
+      let def_hit = try_find_definition(&path_traversal);
+
+      if let Some(_) = def_hit {
+        return None;
+      }
+
+      let span = model.span();
+
+      return Some(Diagnostic {
+        range: Range {
+          start: to_position(span.0),
+          end: to_position(span.1),
+        },
+        severity: Some(DiagnosticSeverity::ERROR),
+        code: None,
+        code_description: None,
+        source: None,
+        message: "No function definition found".to_owned(),
+        related_information: None,
+        tags: None,
+        data: None,
+      });
+    }
+    _ => None,
+  }
 }

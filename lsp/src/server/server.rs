@@ -125,9 +125,9 @@ fn publish_diagnostics(
     return;
   }
 
-  let (_, tree) = find.unwrap();
+  let (ev_tree, tree) = find.unwrap();
 
-  let diagnostics = build_diagnostics(tree);
+  let diagnostics = build_diagnostics(tree, ev_tree.tree());
 
   let _ = connection
     .sender
@@ -207,7 +207,7 @@ fn handle_go_to_definition(
 
   let traversal = get_lowest_denominator(definition_param.position, body);
 
-  let definition = try_find_definition(&traversal);
+  let definition = try_find_definition(&traversal.iter().collect());
 
   if definition.is_none() {
     let _ = connection
