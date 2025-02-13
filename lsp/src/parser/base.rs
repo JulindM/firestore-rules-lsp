@@ -29,8 +29,8 @@ macro_rules! bm_to_base_model(
     }
 ));
 
-pub trait Children<'a>: Contains + ToBaseModel + Debug {
-  fn children(&'a self) -> Vec<&'a dyn Children<'a>>;
+pub trait HasChildren<'a>: Contains + ToBaseModel + Debug {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>>;
 }
 
 pub trait Contains {
@@ -140,7 +140,7 @@ pub struct FirestoreTree {
   body: Option<MatchBody>,
 }
 
-impl<'a> FirestoreTree {
+impl FirestoreTree {
   pub fn new(body: Option<MatchBody>) -> Self {
     Self { body }
   }
@@ -192,12 +192,12 @@ bm_contains!(Function);
 bm_span!(Function);
 bm_to_base_model!(Function);
 
-impl<'a> Children<'a> for Function {
-  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+impl<'a> HasChildren<'a> for Function {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     let mut res = self
       .parameters()
       .iter()
-      .map(|val| val as &dyn Children<'a>)
+      .map(|val| val as &dyn HasChildren<'a>)
       .collect();
 
     if self.body().is_none() {
@@ -245,12 +245,12 @@ bm_contains!(FunctionBody);
 bm_span!(FunctionBody);
 bm_to_base_model!(FunctionBody);
 
-impl<'a> Children<'a> for FunctionBody {
-  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+impl<'a> HasChildren<'a> for FunctionBody {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     let mut res = self
       .variable_defs()
       .iter()
-      .map(|el| el as &dyn Children<'a>)
+      .map(|el| el as &dyn HasChildren<'a>)
       .collect();
 
     if self.ret().is_none() {
@@ -293,8 +293,8 @@ bm_contains!(VariableDefintion);
 bm_span!(VariableDefintion);
 bm_to_base_model!(VariableDefintion);
 
-impl<'a> Children<'a> for VariableDefintion {
-  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+impl<'a> HasChildren<'a> for VariableDefintion {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     if self.definition().is_none() {
       return vec![];
     };
@@ -328,8 +328,8 @@ bm_contains!(Identifier);
 bm_span!(Identifier);
 bm_to_base_model!(Identifier);
 
-impl<'a> Children<'a> for Identifier {
-  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+impl<'a> HasChildren<'a> for Identifier {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     vec![]
   }
 }
@@ -374,8 +374,8 @@ bm_contains!(MatchPathPart);
 bm_span!(MatchPathPart);
 bm_to_base_model!(MatchPathPart);
 
-impl<'a> Children<'a> for MatchPathPart {
-  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+impl<'a> HasChildren<'a> for MatchPathPart {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     vec![]
   }
 }
@@ -412,12 +412,12 @@ bm_contains!(MatchPath);
 bm_span!(MatchPath);
 bm_to_base_model!(MatchPath);
 
-impl<'a> Children<'a> for MatchPath {
-  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+impl<'a> HasChildren<'a> for MatchPath {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     self
       .path_parts()
       .iter()
-      .map(|val| val as &dyn Children<'a>)
+      .map(|val| val as &dyn HasChildren<'a>)
       .collect()
   }
 }
@@ -458,9 +458,9 @@ impl<'a> ToBaseModel for Match {
   }
 }
 
-impl<'a> Children<'a> for Match {
-  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
-    let mut res: Vec<&dyn Children<'a>> = vec![];
+impl<'a> HasChildren<'a> for Match {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
+    let mut res: Vec<&dyn HasChildren<'a>> = vec![];
 
     if self.path.is_some() {
       res.push(self.path().unwrap());
@@ -520,9 +520,9 @@ impl<'a> ToBaseModel for MatchBody {
   }
 }
 
-impl<'a> Children<'a> for MatchBody {
-  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
-    let mut res: Vec<&dyn Children<'a>> = vec![];
+impl<'a> HasChildren<'a> for MatchBody {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
+    let mut res: Vec<&dyn HasChildren<'a>> = vec![];
 
     for ele in self.functions() {
       res.push(ele);
@@ -557,8 +557,8 @@ impl Method {
   }
 }
 
-impl<'a> Children<'a> for Method {
-  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+impl<'a> HasChildren<'a> for Method {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     vec![]
   }
 }
@@ -610,9 +610,9 @@ bm_span!(Rule);
 bm_contains!(Rule);
 bm_to_base_model!(Rule);
 
-impl<'a> Children<'a> for Rule {
-  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
-    let mut res: Vec<&dyn Children<'a>> = vec![];
+impl<'a> HasChildren<'a> for Rule {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
+    let mut res: Vec<&dyn HasChildren<'a>> = vec![];
 
     if self.condition.is_some() {
       res.push(self.condition().unwrap());
@@ -668,8 +668,8 @@ impl Literal {
   }
 }
 
-impl<'a> Children<'a> for Literal {
-  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+impl<'a> HasChildren<'a> for Literal {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     vec![]
   }
 }
@@ -728,8 +728,8 @@ bm_contains!(ExprNode);
 bm_span!(ExprNode);
 bm_to_base_model!(ExprNode);
 
-impl<'a> Children<'a> for ExprNode {
-  fn children(&'a self) -> Vec<&'a dyn Children<'a>> {
+impl<'a> HasChildren<'a> for ExprNode {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     match self.expr() {
       Expr::Unary(_, expr_node) => resolve_expr_nest(vec![expr_node]),
       Expr::Binary(_, expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
@@ -739,7 +739,7 @@ impl<'a> Children<'a> for ExprNode {
       Expr::Member(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::Indexing(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::FunctionCall(name, function_arguments) => {
-        let mut res: Vec<&dyn Children<'a>> = vec![name];
+        let mut res: Vec<&dyn HasChildren<'a>> = vec![name];
 
         function_arguments.iter().for_each(|arg| match arg {
           FunctionArgument::Path(path_segs) => path_segs.iter().for_each(|ps| match ps {
@@ -756,12 +756,14 @@ impl<'a> Children<'a> for ExprNode {
   }
 }
 
-fn resolve_expr_nest<'a>(expr_node: Vec<&'a Option<Box<ExprNode>>>) -> Vec<&'a dyn Children<'a>> {
+fn resolve_expr_nest<'a>(
+  expr_node: Vec<&'a Option<Box<ExprNode>>>,
+) -> Vec<&'a dyn HasChildren<'a>> {
   expr_node
     .into_iter()
     .map(|el| {
       el.as_deref()
-        .map_or_else(|| vec![], |node| vec![node as &dyn Children<'a>])
+        .map_or_else(|| vec![], |node| vec![node as &dyn HasChildren<'a>])
     })
     .flatten()
     .collect()

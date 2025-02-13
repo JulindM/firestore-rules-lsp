@@ -2,7 +2,7 @@ use lsp_types::{Diagnostic, Position};
 use tree_sitter::{Point, Tree};
 
 use crate::parser::base::{
-  BaseModel, Children, Expr, FirestoreTree, MatchPathPartType, ToBaseModel,
+  BaseModel, Expr, FirestoreTree, HasChildren, MatchPathPartType, ToBaseModel,
 };
 
 use super::diagnoser::{diagnose_linting_errors, diagnose_syntax_errors};
@@ -90,7 +90,7 @@ pub fn try_find_definition<'a>(traversing_path: &Vec<&BaseModel<'a>>) -> Option<
 
 pub fn get_lowest_denominator<'a>(
   position: Position,
-  nestable: &'a dyn Children<'a>,
+  nestable: &'a dyn HasChildren<'a>,
 ) -> Vec<BaseModel<'a>> {
   let point = to_point(position);
 
@@ -115,15 +115,14 @@ pub fn get_lowest_denominator<'a>(
   res
 }
 
-pub fn build_diagnostics(tree: &Tree, firestore_tree: Option<&FirestoreTree>) -> Vec<Diagnostic> {
+pub fn build_diagnostics<'a>(
+  tree: &Tree,
+  firestore_tree: &'a mut FirestoreTree,
+) -> Vec<Diagnostic> {
   let mut diagnostics: Vec<Diagnostic> = vec![];
 
   let mut syntax_errors = diagnose_syntax_errors(tree.root_node());
-
-  let mut linting_warnings = vec![];
-  if firestore_tree.is_some() {
-    linting_warnings = diagnose_linting_errors(firestore_tree.unwrap());
-  }
+  let mut linting_warnings = diagnose_linting_errors(firestore_tree);
 
   diagnostics.append(&mut syntax_errors);
   diagnostics.append(&mut linting_warnings);

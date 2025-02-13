@@ -1,9 +1,7 @@
-use std::iter::Inspect;
-
 use lsp_types::{Diagnostic, DiagnosticSeverity, Range};
 use tree_sitter::Node;
 
-use crate::parser::base::{BaseModel, Children, FirestoreTree, ToBaseModel};
+use crate::parser::base::{BaseModel, FirestoreTree, HasChildren};
 
 use super::analysis::{to_position, try_find_definition};
 
@@ -91,7 +89,7 @@ pub fn diagnose_linting_errors<'a>(tree: &FirestoreTree) -> Vec<Diagnostic> {
 }
 
 pub fn diagnose<'a, 'b>(
-  nestable: &'b dyn Children<'b>,
+  nestable: &'b dyn HasChildren<'b>,
   traversal_list: Vec<&BaseModel<'a>>,
 ) -> Vec<Diagnostic> {
   let mut curr_diagnostics: Vec<Diagnostic> = vec![];

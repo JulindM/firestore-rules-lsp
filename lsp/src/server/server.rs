@@ -7,7 +7,10 @@ use std::{collections::HashMap, error::Error};
 use tree_sitter::{Parser, Tree};
 
 use crate::{
-  parser::{base::MatchBody, evaluation::evaluate_tree, extensions::EvaluatedTree},
+  parser::{
+    base::{FirestoreTree, MatchBody},
+    evaluation::evaluate_tree,
+  },
   provider::{
     analysis::{build_diagnostics, get_lowest_denominator, to_position, try_find_definition},
     tokenizer::{get_used_semantic_token_modifiers, get_used_semantic_token_types, tokenize},
@@ -60,10 +63,10 @@ pub fn start_server(startup_type: StartUpType, mut parser: Parser) -> Result<(),
   Ok(())
 }
 
-type LSPTreeStorage = HashMap<String, (EvaluatedTree, Tree)>;
+type LSPTreeStorage<'a> = HashMap<String, (FirestoreTree, Tree)>;
 
 fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<dyn Error>> {
-  let mut evaulated_trees: LSPTreeStorage = HashMap::new();
+  let mut evaulated_trees: LSPTreeStorage<'a> = HashMap::new();
 
   for msg in &connection.receiver {
     match msg {
@@ -114,20 +117,20 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
   Ok(())
 }
 
-fn publish_diagnostics(
+fn publish_diagnostics<'a>(
   text_document_uri: &Uri,
-  evaulated_trees: &HashMap<String, (EvaluatedTree, Tree)>,
+  firestore_trees: &HashMap<String, (FirestoreTree, Tree)>,
   connection: &Connection,
 ) -> () {
-  let find = evaulated_trees.get(text_document_uri.as_str());
+  let find = firestore_trees.get(text_document_uri.as_str());
 
   if find.is_none() {
     return;
   }
 
-  let (ev_tree, tree) = find.unwrap();
+  let (mut firestore_tree, tree) = find.unwrap().to_owned();
 
-  let diagnostics = build_diagnostics(tree, ev_tree.tree());
+  let diagnostics = build_diagnostics(&tree, &mut firestore_tree);
 
   let _ = connection
     .sender
@@ -137,10 +140,10 @@ fn publish_diagnostics(
     )));
 }
 
-fn open_doc(
+fn open_doc<'a>(
   did_open: &DidOpenTextDocumentParams,
   parser: &mut Parser,
-  evaulated_trees: &mut LSPTreeStorage,
+  evaulated_trees: &mut LSPTreeStorage<'a>,
 ) {
   let text = &did_open.text_document.text;
 
@@ -160,10 +163,10 @@ fn open_doc(
   );
 }
 
-fn change_doc(
+fn change_doc<'a>(
   did_change: &DidChangeTextDocumentParams,
   parser: &mut Parser,
-  evaulated_trees: &mut LSPTreeStorage,
+  evaulated_trees: &mut LSPTreeStorage<'a>,
 ) {
   let content = &did_change.content_changes.last();
 
@@ -189,9 +192,9 @@ fn change_doc(
   );
 }
 
-fn handle_go_to_definition(
+fn handle_go_to_definition<'a>(
   definition_r: (RequestId, GotoDefinitionParams),
-  evaulated_trees: &HashMap<String, (EvaluatedTree, Tree)>,
+  evaulated_trees: &HashMap<String, (FirestoreTree, Tree)>,
   req: Request,
   connection: &Connection,
 ) {
@@ -232,7 +235,7 @@ fn handle_go_to_definition(
 }
 
 fn try_get_body<'a>(
-  evaulated_trees: &'a HashMap<String, (EvaluatedTree, Tree)>,
+  evaulated_trees: &'a HashMap<String, (FirestoreTree, Tree)>,
   doc: &TextDocumentIdentifier,
 ) -> Option<&'a MatchBody> {
   let find = evaulated_trees.get(doc.uri.as_str());
@@ -241,26 +244,14 @@ fn try_get_body<'a>(
     return None;
   }
 
-  let (ev_tree, _) = find.unwrap();
+  let (firestore_tree, _) = find.unwrap();
 
-  let firestore_tree = ev_tree.tree();
-
-  if firestore_tree.is_none() {
-    return None;
-  }
-
-  let body = firestore_tree.unwrap().body();
-
-  if body.is_none() {
-    return None;
-  }
-
-  body
+  firestore_tree.body()
 }
 
-fn handle_hover(
+fn handle_hover<'a>(
   hover_r: (RequestId, HoverParams),
-  evaulated_trees: &LSPTreeStorage,
+  evaulated_trees: &LSPTreeStorage<'a>,
   req: Request,
   connection: &Connection,
 ) {
@@ -296,9 +287,9 @@ fn handle_hover(
   let _ = connection.sender.try_send(Message::Response(msg));
 }
 
-fn handle_tokenize_request(
+fn handle_tokenize_request<'a>(
   tokenize_r: (RequestId, SemanticTokensParams),
-  evaulated_trees: &HashMap<String, (EvaluatedTree, Tree)>,
+  evaulated_trees: &HashMap<String, (FirestoreTree, Tree)>,
   req: Request,
   connection: &Connection,
 ) -> () {
