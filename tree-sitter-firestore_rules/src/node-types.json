@@ -206,11 +206,19 @@
           "named": true
         },
         {
-          "type": "member",
+          "type": "expr_group",
           "named": true
         },
         {
-          "type": "primary",
+          "type": "function_call",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        },
+        {
+          "type": "variable",
           "named": true
         }
       ]
@@ -328,15 +336,19 @@
       "required": true,
       "types": [
         {
+          "type": "expr_group",
+          "named": true
+        },
+        {
           "type": "function_call",
           "named": true
         },
         {
-          "type": "member",
+          "type": "indexing",
           "named": true
         },
         {
-          "type": "primary",
+          "type": "member",
           "named": true
         },
         {

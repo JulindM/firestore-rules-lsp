@@ -79,28 +79,35 @@ module.exports = grammar({
 
     expr_group: ($) => seq("(", $.expr, ")"),
 
-    list: ($) =>
-      seq(
-        "[",
-        optional(
-          seq($.expr, repeat(seq(",", $.expr)))
-        ),
-        "]"
-      ),
+    list: ($) => seq("[", optional(seq($.expr, repeat(seq(",", $.expr)))), "]"),
 
     primary: ($) =>
       choice($.literal, $.variable, $.expr_group, $.list, $.function_call),
 
     indexing: ($) =>
-      prec.left(8, seq(choice($.member, $.primary), "[", $.expr, "]")),
-
-    member: ($) =>
       prec.left(
         8,
         seq(
-          choice($.member, $.primary),
+          choice(choice($.variable, $.expr_group, $.function_call), $.list),
+          "[",
+          $.expr,
+          "]"
+        )
+      ),
+
+    member: ($) =>
+      prec.right(
+        8,
+        seq(
+          choice($.variable, $.expr_group, $.function_call, $.indexing),
           ".",
-          choice($.variable, $.function_call)
+          choice(
+            $.variable,
+            $.expr_group,
+            $.function_call,
+            $.indexing,
+            $.member
+          )
         )
       ),
 
@@ -157,7 +164,7 @@ module.exports = grammar({
           "param"
         ),
         ")",
-        $.function_body,
+        $.function_body
       ),
 
     collection_path_seg: (_) => /\/[_a-zA-Z][_a-zA-Z0-9]*/,
