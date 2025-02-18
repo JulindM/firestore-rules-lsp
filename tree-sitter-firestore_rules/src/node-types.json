@@ -508,6 +508,29 @@
     }
   },
   {
+    "type": "service_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "function_def",
+          "named": true
+        },
+        {
+          "type": "match_def",
+          "named": true
+        },
+        {
+          "type": "rule_def",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "service_name",
     "named": true,
     "fields": {}
@@ -522,11 +545,11 @@
       "required": true,
       "types": [
         {
-          "type": "match_body",
+          "type": "rules_version_def",
           "named": true
         },
         {
-          "type": "rules_version_def",
+          "type": "service_body",
           "named": true
         },
         {

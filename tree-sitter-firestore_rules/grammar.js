@@ -8,7 +8,7 @@ module.exports = grammar({
 
   rules: {
     source_file: ($) =>
-      seq(optional($.rules_version_def), $.service_name, $.match_body),
+      seq(optional($.rules_version_def), $.service_name, $.service_body),
 
     rules_version_def: ($) => seq("rules_version", "=", $.string, ";"),
 
@@ -188,6 +188,9 @@ module.exports = grammar({
       ),
 
     match_def: ($) => seq("match", $.match_path, $.match_body),
+
+    service_body: ($) =>
+      seq("{", repeat(choice($.function_def, $.match_def, $.rule_def)), "}"),
 
     match_body: ($) =>
       seq("{", repeat(choice($.function_def, $.match_def, $.rule_def)), "}"),
