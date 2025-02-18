@@ -7,7 +7,7 @@ use crate::parser::base::MethodType;
 use super::base::{
   Expr, ExprNode, FirestoreTree, Function, FunctionArgument, FunctionBody, Identifier, Literal,
   LiteralType, Match, MatchBody, MatchPath, MatchPathPart, MatchPathPartType, Method, Operation,
-  PathSegment, Rule, VariableDefintion,
+  PathSegment, Rule, ServiceBody, VariableDefinition,
 };
 
 macro_rules! sanitized_children {
@@ -26,13 +26,28 @@ pub fn evaluate_tree(tree: Tree, source_bytes: &[u8]) -> FirestoreTree {
   let mut match_body = None;
 
   sanitized_children!(node).for_each(|child| match child.kind() {
-    "match_body" => {
-      match_body = Some(parse_match_body(None, child, source_bytes));
+    "service_body" => {
+      match_body = Some(parse_service_definition(child, source_bytes));
     }
     _ => return,
   });
 
-  FirestoreTree::new(match_body)
+  return FirestoreTree::new(match_body);
+}
+
+fn parse_service_definition<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> ServiceBody {
+  let mut matches = vec![];
+  let mut functions = vec![];
+  let mut rules = vec![];
+
+  sanitized_children!(node).for_each(|child| match child.kind() {
+    "match_def" => matches.push(parse_match_def(None, child, source_bytes)),
+    "function_def" => functions.push(parse_function_def(child, source_bytes)),
+    "rule_def" => rules.push(parse_rule(child, source_bytes)),
+    _ => return,
+  });
+
+  ServiceBody::new(functions, matches, rules, node)
 }
 
 fn parse_match_body<'a, 'b>(
@@ -113,7 +128,7 @@ fn parse_fun_return<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode>
   expr
 }
 
-fn parse_variable_def<'b>(node: Node<'b>, source_bytes: &[u8]) -> VariableDefintion {
+fn parse_variable_def<'b>(node: Node<'b>, source_bytes: &[u8]) -> VariableDefinition {
   let mut name = "";
   let mut expr = None;
 
@@ -123,7 +138,7 @@ fn parse_variable_def<'b>(node: Node<'b>, source_bytes: &[u8]) -> VariableDefint
     _ => return,
   });
 
-  VariableDefintion::new(name, expr, node)
+  VariableDefinition::new(name, expr, node)
 }
 
 fn parse_match_path<'b>(node: Node<'b>, source_bytes: &[u8]) -> MatchPath {
@@ -314,14 +329,16 @@ fn parse_indexing<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
   let object_node = &children[0];
 
   let object = match object_node.kind() {
-    "primary" => parse_primary(*object_node, source_bytes),
-    "member" => parse_member(*object_node, source_bytes),
+    "variable" => parse_variable(*object_node, source_bytes),
+    "function_call" => parse_function_call(*object_node, source_bytes),
+    "list" => parse_list(*object_node, source_bytes),
+    "expr_group" => parse_expr(object_node.child(1).unwrap(), source_bytes),
     _ => None,
   };
 
   let field_node = &children[2];
   let field = match field_node.kind() {
-    "expr" => parse_variable(*field_node, source_bytes),
+    "expr" => parse_expr(*field_node, source_bytes),
     _ => None,
   };
 
@@ -364,15 +381,21 @@ fn parse_member<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
   let object_node = &children[0];
 
   let object = match object_node.kind() {
-    "primary" => parse_primary(*object_node, source_bytes),
-    "member" => parse_member(*object_node, source_bytes),
+    "variable" => parse_variable(*object_node, source_bytes),
+    "expr_group" => parse_expr(object_node.child(1).unwrap(), source_bytes),
+    "function_call" => parse_function_call(*object_node, source_bytes),
+    "indexing" => parse_indexing(*object_node, source_bytes),
     _ => None,
   };
 
   let field_node = &children[2];
+
   let field = match field_node.kind() {
     "variable" => parse_variable(*field_node, source_bytes),
+    "expr_group" => parse_expr(field_node.child(1).unwrap(), source_bytes),
     "function_call" => parse_function_call(*field_node, source_bytes),
+    "indexing" => parse_indexing(*field_node, source_bytes),
+    "member" => parse_member(*field_node, source_bytes),
     _ => None,
   };
 

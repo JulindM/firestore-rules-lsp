@@ -46,10 +46,11 @@ pub enum BaseModel<'a> {
   Function(&'a Function),
   FunctionBody(&'a FunctionBody),
   Rule(&'a Rule),
-  VariableDefintion(&'a VariableDefintion),
+  VariableDefinition(&'a VariableDefinition),
   MatchPath(&'a MatchPath),
   Match(&'a Match),
   MatchBody(&'a MatchBody),
+  ServiceBody(&'a ServiceBody),
   ExprNode(&'a ExprNode),
   Identifier(&'a Identifier),
   Literal(&'a Literal),
@@ -63,7 +64,7 @@ impl<'a> BaseModel<'a> {
       BaseModel::Function(_) => "Function",
       BaseModel::FunctionBody(_) => "FunctionBody",
       BaseModel::Rule(_) => "Rule",
-      BaseModel::VariableDefintion(_) => "VarDef",
+      BaseModel::VariableDefinition(_) => "VarDef",
       BaseModel::MatchPath(_) => "MatchPath",
       BaseModel::Match(_) => "Match",
       BaseModel::MatchBody(_) => "MatchBody",
@@ -82,6 +83,7 @@ impl<'a> BaseModel<'a> {
       BaseModel::Literal(_) => "Literal",
       BaseModel::MatchPathPart(_) => "MatchPathPart",
       BaseModel::Method(_) => "Method",
+      BaseModel::ServiceBody(_) => "ServiceBody",
     }
   }
 
@@ -90,7 +92,7 @@ impl<'a> BaseModel<'a> {
       BaseModel::Function(f) => f.span(),
       BaseModel::FunctionBody(fb) => fb.span(),
       BaseModel::Rule(r) => r.span(),
-      BaseModel::VariableDefintion(vd) => vd.span(),
+      BaseModel::VariableDefinition(vd) => vd.span(),
       BaseModel::MatchPath(mp) => mp.span(),
       BaseModel::Match(m) => m.span(),
       BaseModel::MatchBody(mb) => mb.span(),
@@ -99,6 +101,7 @@ impl<'a> BaseModel<'a> {
       BaseModel::Literal(l) => l.span(),
       BaseModel::MatchPathPart(mpp) => mpp.span(),
       BaseModel::Method(m) => m.span(),
+      BaseModel::ServiceBody(body) => body.span(),
     }
   }
 }
@@ -137,15 +140,15 @@ impl Contains for (Point, Point) {
 
 #[derive(Debug, Clone)]
 pub struct FirestoreTree {
-  body: Option<MatchBody>,
+  body: Option<ServiceBody>,
 }
 
 impl FirestoreTree {
-  pub fn new(body: Option<MatchBody>) -> Self {
+  pub fn new(body: Option<ServiceBody>) -> Self {
     Self { body }
   }
 
-  pub fn body(&self) -> Option<&MatchBody> {
+  pub fn body(&self) -> Option<&ServiceBody> {
     self.body.as_ref()
   }
 }
@@ -172,6 +175,16 @@ impl Function {
       body,
       start: node.start_position(),
       end: node.end_position(),
+    }
+  }
+
+  pub fn new_postionless(name: &str, parameters: Vec<Identifier>) -> Self {
+    Self {
+      name: name.to_owned(),
+      parameters,
+      body: None,
+      start: Point::new(0, 0),
+      end: Point::new(0, 0),
     }
   }
 
@@ -212,7 +225,7 @@ impl<'a> HasChildren<'a> for Function {
 
 #[derive(Debug, Clone)]
 pub struct FunctionBody {
-  variable_defs: Vec<VariableDefintion>,
+  variable_defs: Vec<VariableDefinition>,
   ret: Option<ExprNode>,
   start: Point,
   end: Point,
@@ -220,7 +233,7 @@ pub struct FunctionBody {
 
 impl FunctionBody {
   pub fn new<'a>(
-    variable_defs: Vec<VariableDefintion>,
+    variable_defs: Vec<VariableDefinition>,
     ret: Option<ExprNode>,
     node: Node<'a>,
   ) -> Self {
@@ -232,7 +245,7 @@ impl FunctionBody {
     }
   }
 
-  pub fn variable_defs(&self) -> &[VariableDefintion] {
+  pub fn variable_defs(&self) -> &[VariableDefinition] {
     &self.variable_defs
   }
 
@@ -263,20 +276,29 @@ impl<'a> HasChildren<'a> for FunctionBody {
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableDefintion {
+pub struct VariableDefinition {
   name: String,
   definition: Option<ExprNode>,
   start: Point,
   end: Point,
 }
 
-impl VariableDefintion {
+impl VariableDefinition {
   pub fn new<'a>(name: &str, definition: Option<ExprNode>, node: Node<'a>) -> Self {
     Self {
       name: name.to_owned(),
       definition,
       start: node.start_position(),
       end: node.end_position(),
+    }
+  }
+
+  pub fn new_postionless<'a>(name: &str) -> Self {
+    Self {
+      name: name.to_owned(),
+      definition: None,
+      start: Point::new(0, 0),
+      end: Point::new(0, 0),
     }
   }
 
@@ -289,11 +311,11 @@ impl VariableDefintion {
   }
 }
 
-bm_contains!(VariableDefintion);
-bm_span!(VariableDefintion);
-bm_to_base_model!(VariableDefintion);
+bm_contains!(VariableDefinition);
+bm_span!(VariableDefinition);
+bm_to_base_model!(VariableDefinition);
 
-impl<'a> HasChildren<'a> for VariableDefintion {
+impl<'a> HasChildren<'a> for VariableDefinition {
   fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     if self.definition().is_none() {
       return vec![];
@@ -316,6 +338,14 @@ impl Identifier {
       value: String::from(name),
       start: node.start_position(),
       end: node.end_position(),
+    }
+  }
+
+  pub fn new_postionless<'a>(name: &str) -> Self {
+    Self {
+      value: String::from(name),
+      start: Point::new(0, 0),
+      end: Point::new(0, 0),
     }
   }
 
@@ -525,6 +555,94 @@ impl<'a> HasChildren<'a> for MatchBody {
     let mut res: Vec<&dyn HasChildren<'a>> = vec![];
 
     for ele in self.functions() {
+      res.push(ele);
+    }
+
+    for ele in self.matches() {
+      res.push(ele);
+    }
+
+    for ele in self.rules() {
+      res.push(ele);
+    }
+
+    res
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct ServiceBody {
+  functions: Vec<Function>,
+  variables: Vec<VariableDefinition>,
+  matches: Vec<Match>,
+  rules: Vec<Rule>,
+  start: Point,
+  end: Point,
+}
+
+impl ServiceBody {
+  pub fn new<'b>(
+    functions: Vec<Function>,
+    matches: Vec<Match>,
+    rules: Vec<Rule>,
+    node: Node<'b>,
+  ) -> Self {
+    let mut service_funcs = functions;
+
+    service_funcs.extend([
+      Function::new_postionless("get", [Identifier::new_postionless("path")].to_vec()),
+      Function::new_postionless("getAfter", [Identifier::new_postionless("path")].to_vec()),
+      Function::new_postionless("exists", [Identifier::new_postionless("path")].to_vec()),
+    ]);
+
+    Self {
+      functions: service_funcs,
+      matches,
+      rules,
+      start: node.start_position(),
+      end: node.end_position(),
+      variables: vec![
+        VariableDefinition::new_postionless("request"),
+        VariableDefinition::new_postionless("resource"),
+      ],
+    }
+  }
+
+  pub fn functions(&self) -> &[Function] {
+    &self.functions
+  }
+
+  pub fn matches(&self) -> &[Match] {
+    &self.matches
+  }
+
+  pub fn rules(&self) -> &[Rule] {
+    &self.rules
+  }
+
+  pub fn variables(&self) -> &[VariableDefinition] {
+    &self.variables
+  }
+}
+
+bm_contains!(ServiceBody);
+bm_span!(ServiceBody);
+
+impl<'a> ToBaseModel for ServiceBody {
+  fn to_base_model<'b>(&'b self) -> BaseModel<'b> {
+    BaseModel::ServiceBody(&self)
+  }
+}
+
+impl<'a> HasChildren<'a> for ServiceBody {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
+    let mut res: Vec<&dyn HasChildren<'a>> = vec![];
+
+    for ele in self.functions() {
+      res.push(ele);
+    }
+
+    for ele in self.variables() {
       res.push(ele);
     }
 

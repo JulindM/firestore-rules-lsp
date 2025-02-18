@@ -8,11 +8,11 @@ use tree_sitter::{Parser, Tree};
 
 use crate::{
   parser::{
-    base::{FirestoreTree, MatchBody},
+    base::{FirestoreTree, MatchBody, ServiceBody},
     evaluation::evaluate_tree,
   },
   provider::{
-    analysis::{build_diagnostics, get_lowest_denominator, to_position, try_find_definition},
+    analysis::{build_diagnostics, get_path_traversal, to_position, try_find_definition},
     tokenizer::{get_used_semantic_token_modifiers, get_used_semantic_token_types, tokenize},
   },
   StartUpType,
@@ -128,9 +128,9 @@ fn publish_diagnostics<'a>(
     return;
   }
 
-  let (mut firestore_tree, tree) = find.unwrap().to_owned();
+  let (firestore_tree, tree) = find.unwrap().to_owned();
 
-  let diagnostics = build_diagnostics(&tree, &mut firestore_tree);
+  let diagnostics = build_diagnostics(&tree, &firestore_tree);
 
   let _ = connection
     .sender
@@ -208,9 +208,9 @@ fn handle_go_to_definition<'a>(
     }
   };
 
-  let traversal = get_lowest_denominator(definition_param.position, body);
+  let traversal = get_path_traversal(definition_param.position, body);
 
-  let definition = try_find_definition(&traversal.iter().collect());
+  let definition = try_find_definition(&traversal);
 
   if definition.is_none() {
     let _ = connection
@@ -237,7 +237,7 @@ fn handle_go_to_definition<'a>(
 fn try_get_body<'a>(
   evaulated_trees: &'a HashMap<String, (FirestoreTree, Tree)>,
   doc: &TextDocumentIdentifier,
-) -> Option<&'a MatchBody> {
+) -> Option<&'a ServiceBody> {
   let find = evaulated_trees.get(doc.uri.as_str());
 
   if find.is_none() {
@@ -265,7 +265,7 @@ fn handle_hover<'a>(
     }
   };
 
-  let traversal_list = get_lowest_denominator(hover_params.position, body);
+  let traversal_list = get_path_traversal(hover_params.position, body);
 
   let traversal: String = traversal_list
     .into_iter()

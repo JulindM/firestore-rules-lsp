@@ -3,7 +3,7 @@ use tree_sitter::Node;
 
 use crate::parser::base::{BaseModel, FirestoreTree, HasChildren};
 
-use super::analysis::{to_position, try_find_definition};
+use super::analysis::{is_definable, to_position, try_find_definition};
 
 pub fn diagnose_syntax_errors<'a>(node: Node<'a>) -> Vec<Diagnostic> {
   let mut errors: Vec<Diagnostic> = vec![];
@@ -79,72 +79,81 @@ fn is_parse_error<'a>(node: Node<'a>) -> Option<Node<'a>> {
   None
 }
 
-pub fn diagnose_linting_errors<'a>(tree: &FirestoreTree) -> Vec<Diagnostic> {
+pub fn diagnose_linting_errors<'a>(tree: &'a FirestoreTree) -> Vec<Diagnostic> {
   if tree.body().is_none() {
     return vec![];
   }
 
   let body = tree.body().unwrap();
-  diagnose(body, vec![])
+  bfs_execute_at(body, &vec![], find_missing_definitions)
 }
 
-pub fn diagnose<'a, 'b>(
-  nestable: &'b dyn HasChildren<'b>,
-  traversal_list: Vec<&BaseModel<'a>>,
-) -> Vec<Diagnostic> {
-  let mut curr_diagnostics: Vec<Diagnostic> = vec![];
+type TraversableConsuming<'a, T> = fn(&Vec<BaseModel<'a>>) -> Option<T>;
 
-  let inspection = inspect(&nestable.to_base_model(), &traversal_list);
+pub fn bfs_execute_at<'a, T>(
+  nestable: &'a dyn HasChildren<'a>,
+  existing_traversal: &Vec<BaseModel<'a>>,
+  function: TraversableConsuming<'a, T>,
+) -> Vec<T> {
+  // TODO avoid cloning here - use some sort of slice
+  let mut curr_traversal = existing_traversal.clone();
 
-  if let Some(diagnostic) = inspection {
-    curr_diagnostics.push(diagnostic);
+  curr_traversal.push(nestable.to_base_model());
+
+  let mut curr_diagnostics: Vec<T> = vec![];
+
+  let result_opt = function(&curr_traversal);
+
+  if let Some(result) = result_opt {
+    curr_diagnostics.push(result);
   }
 
   for child in nestable.children() {
-    let mut new_traversal = traversal_list.clone();
-    let base_model = child.to_base_model();
+    let mut child_results = bfs_execute_at(child, &curr_traversal, function);
 
-    new_traversal.push(&base_model);
-
-    let mut child_diagnostic = diagnose(child, new_traversal);
-    curr_diagnostics.append(&mut child_diagnostic);
+    if !child_results.is_empty() {
+      curr_diagnostics.append(&mut child_results);
+    }
   }
 
   curr_diagnostics
 }
 
-fn inspect<'a, 'b>(
-  model: &BaseModel<'b>,
-  traversal_list: &'a Vec<&BaseModel<'a>>,
-) -> Option<Diagnostic> {
-  let mut path_traversal = traversal_list.clone();
-  path_traversal.push(model);
-
-  match model.type_str() {
-    "FunctionCall" => {
-      let def_hit = try_find_definition(&path_traversal);
-
-      if let Some(_) = def_hit {
+fn find_missing_definitions<'a>(traversal_list: &'a Vec<BaseModel<'a>>) -> Option<Diagnostic> {
+  match traversal_list.last() {
+    Some(model) => {
+      if !is_definable(model) {
         return None;
       }
 
-      let span = model.span();
+      match model {
+        BaseModel::ExprNode(_) => {
+          let def_hit = try_find_definition(traversal_list);
 
-      return Some(Diagnostic {
-        range: Range {
-          start: to_position(span.0),
-          end: to_position(span.1),
-        },
-        severity: Some(DiagnosticSeverity::ERROR),
-        code: None,
-        code_description: None,
-        source: None,
-        message: "No function definition found".to_owned(),
-        related_information: None,
-        tags: None,
-        data: None,
-      });
+          if let Some(_) = def_hit {
+            return None;
+          }
+
+          let span = model.span();
+
+          return Some(Diagnostic {
+            range: Range {
+              start: to_position(span.0),
+              end: to_position(span.1),
+            },
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: None,
+            code_description: None,
+            source: None,
+            message: "No function definition found".to_owned(),
+            related_information: None,
+            tags: None,
+            data: None,
+          });
+        }
+        _ => None,
+      }
     }
-    _ => None,
+    None => None,
   }
 }
