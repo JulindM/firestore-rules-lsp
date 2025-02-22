@@ -39,3 +39,4 @@ dist/
 *.o
 
 *.html
+*.rules

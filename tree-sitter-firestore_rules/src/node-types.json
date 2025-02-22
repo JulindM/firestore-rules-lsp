@@ -111,6 +111,37 @@
     }
   },
   {
+    "type": "field_indexing",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expr",
+          "named": true
+        },
+        {
+          "type": "function_call",
+          "named": true
+        },
+        {
+          "type": "list",
+          "named": true
+        },
+        {
+          "type": "range",
+          "named": true
+        },
+        {
+          "type": "variable",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "fun_return",
     "named": true,
     "fields": {},
@@ -169,10 +200,33 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": false,
+      "required": true,
       "types": [
         {
           "type": "function_argument",
+          "named": true
+        },
+        {
+          "type": "function_calling_name",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "function_calling_name",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "namespace_reserved_function",
           "named": true
         }
       ]
@@ -183,11 +237,15 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
           "type": "function_body",
+          "named": true
+        },
+        {
+          "type": "param_list",
           "named": true
         }
       ]
@@ -219,6 +277,10 @@
         },
         {
           "type": "range",
+          "named": true
+        },
+        {
+          "type": "string",
           "named": true
         },
         {
@@ -340,7 +402,26 @@
       "required": true,
       "types": [
         {
-          "type": "expr_group",
+          "type": "member_field",
+          "named": true
+        },
+        {
+          "type": "member_object",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "member_field",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "field_indexing",
           "named": true
         },
         {
@@ -348,15 +429,7 @@
           "named": true
         },
         {
-          "type": "indexing",
-          "named": true
-        },
-        {
           "type": "member",
-          "named": true
-        },
-        {
-          "type": "member_object",
           "named": true
         },
         {
@@ -375,23 +448,7 @@
       "required": true,
       "types": [
         {
-          "type": "expr_group",
-          "named": true
-        },
-        {
-          "type": "function_call",
-          "named": true
-        },
-        {
-          "type": "indexing",
-          "named": true
-        },
-        {
-          "type": "literal",
-          "named": true
-        },
-        {
-          "type": "variable",
+          "type": "primary",
           "named": true
         }
       ]
@@ -418,8 +475,18 @@
     }
   },
   {
-    "type": "param",
-    "named": false,
+    "type": "namespace_reserved_function",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "namespace_reserved_variable",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "param_list",
+    "named": true,
     "fields": {},
     "children": {
       "multiple": true,
@@ -663,6 +730,10 @@
         {
           "type": "identifier",
           "named": true
+        },
+        {
+          "type": "namespace_reserved_variable",
+          "named": true
         }
       ]
     }
@@ -815,12 +886,28 @@
     "named": false
   },
   {
+    "type": "debug",
+    "named": false
+  },
+  {
     "type": "delete",
+    "named": false
+  },
+  {
+    "type": "duration",
     "named": false
   },
   {
     "type": "escape_sequence",
     "named": true
+  },
+  {
+    "type": "exists",
+    "named": false
+  },
+  {
+    "type": "existsAfter",
+    "named": false
   },
   {
     "type": "false",
@@ -831,15 +918,19 @@
     "named": false
   },
   {
-    "type": "function_calling_name",
-    "named": false
-  },
-  {
     "type": "function_name",
     "named": false
   },
   {
     "type": "get",
+    "named": false
+  },
+  {
+    "type": "getAfter",
+    "named": false
+  },
+  {
+    "type": "hashing",
     "named": false
   },
   {
@@ -855,6 +946,10 @@
     "named": false
   },
   {
+    "type": "latlng",
+    "named": false
+  },
+  {
     "type": "let",
     "named": false
   },
@@ -864,6 +959,10 @@
   },
   {
     "type": "match",
+    "named": false
+  },
+  {
+    "type": "math",
     "named": false
   },
   {
@@ -879,11 +978,15 @@
     "named": true
   },
   {
-    "type": "param",
+    "type": "read",
     "named": false
   },
   {
-    "type": "read",
+    "type": "request",
+    "named": false
+  },
+  {
+    "type": "resource",
     "named": false
   },
   {
@@ -905,6 +1008,10 @@
   {
     "type": "string_fragment",
     "named": true
+  },
+  {
+    "type": "timestamp",
+    "named": false
   },
   {
     "type": "true",

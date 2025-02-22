@@ -62,11 +62,17 @@ module.exports = grammar({
 
     function_argument: ($) => choice($.path, $.expr),
 
+    namespace_reserved_function: (_) =>
+      choice("get", "getAfter", "exists", "existsAfter", "debug"),
+
+    function_calling_name: ($) =>
+      choice($.namespace_reserved_function, $.identifier),
+
     function_call: ($) =>
       prec.left(
         1,
         seq(
-          alias($.identifier, "function_calling_name"),
+          $.function_calling_name,
           token.immediate("("),
           optional(
             seq($.function_argument, repeat(seq(",", $.function_argument)))
@@ -75,7 +81,19 @@ module.exports = grammar({
         )
       ),
 
-    variable: ($) => $.identifier,
+    namespace_reserved_variable: (_) =>
+      choice(
+        // TODO special handling for modules
+        "duration",
+        "hashing",
+        "latlng",
+        "math",
+        "timestamp",
+        "request",
+        "resource"
+      ),
+
+    variable: ($) => choice($.namespace_reserved_variable, $.identifier),
 
     expr_group: ($) => seq("(", $.expr, ")"),
 
@@ -90,39 +108,33 @@ module.exports = grammar({
       prec.left(
         8,
         seq(
-          choice(choice($.variable, $.expr_group, $.function_call), $.list),
+          choice(
+            choice($.string, $.variable, $.expr_group, $.function_call),
+            $.list
+          ),
           "[",
           choice($.expr, $.range),
           "]"
         )
       ),
 
-    member_object: ($) =>
-      seq(
-        choice(
-          $.literal,
-          $.variable,
-          $.expr_group,
-          $.function_call,
-          $.indexing
-        ),
-        token.immediate(".")
-      ),
-
-    member: ($) =>
-      prec.right(
+    field_indexing: ($) =>
+      prec.left(
         8,
         seq(
-          $.member_object,
-          choice(
-            $.variable,
-            $.expr_group,
-            $.function_call,
-            $.indexing,
-            $.member
-          )
+          choice(choice($.variable, $.function_call), $.list),
+          "[",
+          choice($.expr, $.range),
+          "]"
         )
       ),
+
+    member_object: ($) => $.primary,
+
+    member_field: ($) =>
+      seq(".", choice($.variable, $.function_call, $.field_indexing, $.member)),
+
+    member: ($) => prec.right(8, seq($.member_object, $.member_field)),
 
     unary: ($) =>
       prec.right(
@@ -167,15 +179,14 @@ module.exports = grammar({
 
     function_body: ($) => seq("{", repeat($.variable_def), $.fun_return, "}"),
 
+    param_list: ($) => seq($.identifier, repeat(seq(",", $.identifier))),
+
     function_def: ($) =>
       seq(
         "function",
         alias($.identifier, "function_name"),
         "(",
-        alias(
-          optional(seq($.identifier, repeat(seq(",", $.identifier)))),
-          "param"
-        ),
+        optional($.param_list),
         ")",
         $.function_body
       ),
@@ -189,7 +200,7 @@ module.exports = grammar({
         choice($.collection_path_seg, $.single_path_seg, $.multi_path_seg)
       ),
 
-    method: ($) =>
+    method: (_) =>
       choice("read", "write", "get", "list", "create", "update", "delete"),
 
     rule_def: ($) =>
