@@ -1,7 +1,7 @@
 use lsp_types::{Diagnostic, DiagnosticSeverity, Range};
 use tree_sitter::Node;
 
-use crate::parser::base::{BaseModel, Expr, FirestoreTree, HasChildren, IdentifierLocality};
+use crate::parser::base::{BaseModel, Expr, FirestoreTree, HasChildren};
 
 use super::analysis::{get_definable_expr, to_position, try_find_definition};
 
