@@ -1,13 +1,10 @@
-use std::fmt::format;
-
-use lsp_types::{
-  CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Diagnostic, Position,
-};
+use lsp_types::{CompletionItem, CompletionItemKind, Diagnostic, Position};
 use tree_sitter::{Point, Tree};
 
 use crate::parser::{
-  base::{BaseModel, Expr, ExprNode, FirestoreTree, HasChildren, MatchPathPartType, ToBaseModel},
-  extensions,
+  base::{
+    BaseModel, Expr, FirestoreTree, HasChildren, IdentifierLocality, MatchPathPartType, ToBaseModel,
+  },
   rules_namespace::{FirebaseType, FirebaseTypeTrait},
 };
 
@@ -27,14 +24,24 @@ pub fn to_position(point: Point) -> Position {
   )
 }
 
-pub fn is_definable<'a>(model: &BaseModel<'a>) -> bool {
+pub fn get_definable_expr<'a>(model: &BaseModel<'a>) -> Option<&'a Expr> {
   match model {
-    BaseModel::ExprNode(expr) => match expr.expr() {
-      Expr::FunctionCall(_, _) => true,
-      Expr::Variable(_) => true,
-      _ => false,
-    },
-    _ => false,
+    BaseModel::ExprNode(expr) => {
+      let expression = expr.expr();
+
+      return match &expression {
+        Expr::FunctionCall(name_locality, __) => match name_locality {
+          IdentifierLocality::Local(_) => Some(expression),
+          _ => None,
+        },
+        Expr::Variable(variable_locality) => match variable_locality {
+          IdentifierLocality::Local(_) => Some(expression),
+          _ => None,
+        },
+        _ => None,
+      };
+    }
+    _ => None,
   }
 }
 
@@ -51,7 +58,7 @@ pub fn try_find_definition<'a>(
   let innermost_identifiable = reverse_traversal
     .iter()
     .enumerate()
-    .find(|(_, el)| is_definable(el));
+    .find_map(|(i, el)| get_definable_expr(el).map_or(None, |expr| Some((i, expr))));
 
   if innermost_identifiable.is_none() {
     return (None, true);
@@ -61,81 +68,62 @@ pub fn try_find_definition<'a>(
 
   let (_, to_look_in) = reverse_traversal.split_at(hit_idx + 1);
 
-  let member_hits = to_look_in.iter().find(|el| match el {
+  let member_field_descendant = to_look_in.iter().find(|el| match el {
     BaseModel::ExprNode(expr) => match expr.expr() {
-      Expr::Member(_, _) => true,
+      Expr::MemberField(_) => true,
       _ => false,
     },
     _ => false,
   });
 
-  if member_hits.is_some() {
+  if member_field_descendant.is_some() {
     return (None, true);
   }
 
   let hit = match to_identify {
-    BaseModel::ExprNode(node) => match node.expr() {
-      Expr::FunctionCall(fname, _) => to_look_in
-        .iter()
-        .filter_map(|el| match el {
-          BaseModel::MatchBody(mb) => Some(mb),
-          _ => None,
-        })
-        .map(|el| el.functions())
-        .flatten()
-        .find(|f| f.name().eq(fname.value()))
-        .and_then(|f| Some(f.to_base_model())),
-      Expr::Variable(ident) => to_look_in
-        .iter()
-        .filter_map(|el| match el {
-          BaseModel::Match(m) if m.path().is_some() => Some(
-            m.path()
-              .unwrap()
-              .path_parts()
-              .iter()
-              .filter(|p| *p.pathpart_type() == MatchPathPartType::Document)
-              .map(|val| val.to_base_model())
-              .collect::<Vec<BaseModel<'a>>>(),
-          ),
-          BaseModel::MatchBody(mb) if !mb.functions().is_empty() => Some(
-            mb.functions()
-              .iter()
-              .map(|f| f.to_base_model())
-              .collect::<Vec<BaseModel<'a>>>(),
-          ),
-          BaseModel::ServiceBody(sb) => Some(
-            [
-              sb.functions()
-                .iter()
-                .map(|f| f.to_base_model())
-                .collect::<Vec<BaseModel<'a>>>(),
-              sb.variables().iter().map(|v| v.to_base_model()).collect(),
-            ]
-            .concat(),
-          ),
-          BaseModel::Function(f) if !f.parameters().is_empty() => Some(
-            f.parameters()
-              .iter()
-              .map(|vd| vd.to_base_model())
-              .collect::<Vec<BaseModel<'a>>>(),
-          ),
-          BaseModel::FunctionBody(fb) if !fb.variable_defs().is_empty() => Some(
-            fb.variable_defs()
-              .iter()
-              .map(|vd| vd.to_base_model())
-              .collect::<Vec<BaseModel<'a>>>(),
-          ),
-          _ => None,
-        })
-        .flatten()
-        .find(|definition| match definition {
-          BaseModel::VariableDefinition(vd) => vd.name().eq(ident.value()),
-          BaseModel::Identifier(i) => i.value().eq(ident.value()),
-          BaseModel::MatchPathPart(mpp) => mpp.value().eq(ident.value()),
-          _ => false,
-        }),
-      _ => None,
-    },
+    Expr::FunctionCall(f_identifier, _) => to_look_in
+      .iter()
+      .filter_map(|el| match el {
+        BaseModel::ServiceBody(sb) => Some(sb.functions()),
+        BaseModel::MatchBody(mb) => Some(mb.functions()),
+        _ => None,
+      })
+      .flatten()
+      .find(|f| f.name().eq(f_identifier.name()))
+      .and_then(|f| Some(f.to_base_model())),
+    Expr::Variable(IdentifierLocality::Local(ident)) => to_look_in
+      .iter()
+      .filter_map(|el| match el {
+        BaseModel::Match(m) if m.path().is_some() => Some(
+          m.path()
+            .unwrap()
+            .path_parts()
+            .iter()
+            .filter(|p| *p.pathpart_type() == MatchPathPartType::Document)
+            .map(|val| val.to_base_model())
+            .collect::<Vec<BaseModel<'a>>>(),
+        ),
+        BaseModel::Function(f) if !f.parameters().is_empty() => Some(
+          f.parameters()
+            .iter()
+            .map(|vd| vd.to_base_model())
+            .collect::<Vec<BaseModel<'a>>>(),
+        ),
+        BaseModel::FunctionBody(fb) if !fb.variable_defs().is_empty() => Some(
+          fb.variable_defs()
+            .iter()
+            .map(|vd| vd.to_base_model())
+            .collect::<Vec<BaseModel<'a>>>(),
+        ),
+        _ => None,
+      })
+      .flatten()
+      .find(|definition| match definition {
+        BaseModel::VariableDefinition(vd) => vd.name().eq(ident.value()),
+        BaseModel::Identifier(i) => i.value().eq(ident.value()),
+        BaseModel::MatchPathPart(mpp) => mpp.value().eq(ident.value()),
+        _ => false,
+      }),
     _ => None,
   };
 
@@ -211,6 +199,7 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
   let props = properties.iter().map(|p| CompletionItem {
     label: p.0.to_owned(),
     insert_text: Some(p.0.to_owned()),
+    detail: Some(p.1.display_name().to_owned()),
     kind: Some(CompletionItemKind::PROPERTY),
     ..Default::default()
   });
@@ -229,6 +218,7 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
       // TODO when parameters are there
       if p.2.is_empty() { "()" } else { "()" }
     )),
+    detail: Some(p.1.display_name().to_owned()),
     kind: Some(CompletionItemKind::FUNCTION),
     ..Default::default()
   });

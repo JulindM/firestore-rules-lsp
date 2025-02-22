@@ -1,14 +1,12 @@
-use std::{f32::consts::E, vec};
-
 use tree_sitter::{Node, Tree};
 
 use crate::parser::base::MethodType;
 
 use super::{
   base::{
-    Expr, ExprNode, FirestoreTree, Function, FunctionArgument, FunctionBody, Identifier, Literal,
-    LiteralType, Match, MatchBody, MatchPath, MatchPathPart, MatchPathPartType, Method, Operation,
-    PathSegment, Rule, ServiceBody, VariableDefinition,
+    Expr, ExprNode, FirestoreTree, Function, FunctionArgument, FunctionBody, Identifier,
+    IdentifierLocality, Literal, Match, MatchBody, MatchPath, MatchPathPart, MatchPathPartType,
+    Method, Operation, PathSegment, Rule, ServiceBody, VariableDefinition,
   },
   rules_namespace::FirebaseType,
 };
@@ -44,7 +42,7 @@ fn parse_service_definition<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> Serv
   let mut rules = vec![];
 
   sanitized_children!(node).for_each(|child| match child.kind() {
-    "match_def" => matches.push(parse_match_def(None, child, source_bytes)),
+    "match_def" => matches.push(parse_match_def(child, source_bytes)),
     "function_def" => functions.push(parse_function_def(child, source_bytes)),
     "rule_def" => rules.push(parse_rule(child, source_bytes)),
     _ => return,
@@ -53,17 +51,13 @@ fn parse_service_definition<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> Serv
   ServiceBody::new(functions, matches, rules, node)
 }
 
-fn parse_match_body<'a, 'b>(
-  curr_match_parent: Option<&'a Match>,
-  node: Node<'b>,
-  source_bytes: &[u8],
-) -> MatchBody {
+fn parse_match_body<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> MatchBody {
   let mut matches = vec![];
   let mut functions = vec![];
   let mut rules = vec![];
 
   sanitized_children!(node).for_each(|child| match child.kind() {
-    "match_def" => matches.push(parse_match_def(curr_match_parent, child, source_bytes)),
+    "match_def" => matches.push(parse_match_def(child, source_bytes)),
     "function_def" => functions.push(parse_function_def(child, source_bytes)),
     "rule_def" => rules.push(parse_rule(child, source_bytes)),
     _ => return,
@@ -72,17 +66,13 @@ fn parse_match_body<'a, 'b>(
   MatchBody::new(functions, matches, rules, node)
 }
 
-fn parse_match_def<'a, 'b>(
-  curr_parent_match: Option<&'a Match>,
-  node: Node<'b>,
-  source_bytes: &[u8],
-) -> Match {
+fn parse_match_def<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> Match {
   let mut path = None;
   let mut body = None;
 
   sanitized_children!(node).for_each(|child| match child.kind() {
     "match_path" => path = Some(parse_match_path(child, source_bytes)),
-    "match_body" => body = Some(parse_match_body(curr_parent_match, child, source_bytes)),
+    "match_body" => body = Some(parse_match_body(child, source_bytes)),
     _ => return,
   });
 
@@ -91,20 +81,31 @@ fn parse_match_def<'a, 'b>(
 
 fn parse_function_def<'b>(node: Node<'b>, source_bytes: &[u8]) -> Function {
   let mut name = "";
-  let mut parms = vec![];
+  let mut params = vec![];
   let mut body = None;
 
   sanitized_children!(node).for_each(|child| match child.kind() {
     "function_name" => name = child.utf8_text(source_bytes).unwrap(),
-    "param" => parms.push(Identifier::new(
-      child.utf8_text(source_bytes).unwrap(),
-      child,
-    )),
+    "param_list" => params = parse_param_list(child, source_bytes),
     "function_body" => body = Some(parse_function_body(child, source_bytes)),
     _ => return,
   });
 
-  Function::new(name, parms, body, node)
+  Function::new(name, params, body, node)
+}
+
+fn parse_param_list<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> Vec<Identifier> {
+  let mut idents = vec![];
+
+  sanitized_children!(node).for_each(|child| match child.kind() {
+    "identifier" => idents.push(Identifier::new(
+      child.utf8_text(source_bytes).unwrap(),
+      child,
+    )),
+    _ => return,
+  });
+
+  idents
 }
 
 fn parse_function_body<'b>(node: Node<'b>, source_bytes: &[u8]) -> FunctionBody {
@@ -209,17 +210,13 @@ fn parse_list<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
           list_elements.push(res.unwrap());
         }
       }
-      _ => return None,
+      _ => continue,
     }
   }
 
   Some(ExprNode::new(
     Expr::List(list_elements.clone()),
-    list_elements
-      .first()
-      .and_then(|el| Some(el.inferred_type().clone()))
-      .or(Some(FirebaseType::UNKNOWN))
-      .unwrap(),
+    FirebaseType::List,
     node,
   ))
 }
@@ -227,14 +224,10 @@ fn parse_list<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
 fn parse_function_call<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
   let mut args = vec![];
   let mut name = None;
+  let mut func_type = FirebaseType::UNKNOWN;
 
   sanitized_children!(node).for_each(|child| match child.kind() {
-    "function_calling_name" => {
-      name = Some(Identifier::new(
-        child.utf8_text(source_bytes).unwrap(),
-        child,
-      ));
-    }
+    "function_calling_name" => (name, func_type) = parse_function_calling_name(child, source_bytes),
     "function_argument" => {
       let res = parse_function_arg(child, source_bytes);
       if res.is_some() {
@@ -246,9 +239,27 @@ fn parse_function_call<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNo
 
   Some(ExprNode::new(
     Expr::FunctionCall(name.unwrap(), args),
-    FirebaseType::UNKNOWN,
+    func_type,
     node,
   ))
+}
+
+fn parse_function_calling_name<'b>(
+  node: Node<'b>,
+  source_bytes: &[u8],
+) -> (Option<IdentifierLocality>, FirebaseType) {
+  let name = node.utf8_text(source_bytes).unwrap();
+
+  let (fname, var_type) = match node.child(0).unwrap().kind() {
+    "identifier" => (
+      Some(IdentifierLocality::Local(Identifier::new(name, node))),
+      FirebaseType::UNKNOWN,
+    ),
+    "namespace_reserved_function" => parse_namespace_reserved_function(node.child(0).unwrap()),
+    _ => (None, FirebaseType::UNKNOWN),
+  };
+
+  (fname, var_type)
 }
 
 fn parse_function_arg<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<FunctionArgument> {
@@ -304,48 +315,89 @@ fn parse_literal<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
   let child = children[0];
 
   let literal = match child.kind() {
-    "number" => Some((
-      Literal::new(
-        LiteralType::Number(
-          child
-            .utf8_text(source_bytes)
-            .unwrap()
-            .parse::<f32>()
-            .unwrap(),
-        ),
-        child,
-      ),
-      FirebaseType::Number,
+    "number" => Some(Literal::new(
+      child
+        .utf8_text(source_bytes)
+        .unwrap()
+        .parse::<f32>()
+        .map_or(FirebaseType::Integer, |_| FirebaseType::Float),
+      child,
     )),
-    "true" => Some((
-      Literal::new(LiteralType::Bool(true), node),
-      FirebaseType::Boolean,
-    )),
-    "false" => Some((
-      Literal::new(LiteralType::Bool(false), node),
-      FirebaseType::Boolean,
-    )),
-    "null" => Some((Literal::new(LiteralType::Null, child), FirebaseType::Null)),
-    "string" => Some((
-      Literal::new(
-        LiteralType::String(child.utf8_text(source_bytes).unwrap().to_owned()),
-        child,
-      ),
-      FirebaseType::String,
-    )),
+    "true" => Some(Literal::new(FirebaseType::Boolean, node)),
+    "false" => Some(Literal::new(FirebaseType::Boolean, node)),
+    "null" => Some(Literal::new(FirebaseType::Null, child)),
+    "string" => Some(Literal::new(FirebaseType::String, child)),
     _ => None,
   };
 
-  literal.and_then(|lit| Some(ExprNode::new(Expr::Literal(lit.0), lit.1, node)))
+  literal.and_then(|lit| {
+    Some(ExprNode::new(
+      Expr::Literal(lit.clone()),
+      lit.firebase_type(),
+      node,
+    ))
+  })
+}
+
+fn parse_namespace_reserved_variable<'b>(
+  node: Node<'b>,
+) -> (Option<IdentifierLocality>, FirebaseType) {
+  let firebase_type = match node.child(0).unwrap().kind() {
+    "duration" => FirebaseType::duration_module,
+    "hashing" => FirebaseType::hashing_module,
+    "latlng" => FirebaseType::latlng_module,
+    "math" => FirebaseType::math_module,
+    "timestamp" => FirebaseType::timestamp_module,
+    "request" => FirebaseType::Request,
+    "resource" => FirebaseType::Resource,
+    _ => FirebaseType::UNKNOWN,
+  };
+
+  (
+    Some(IdentifierLocality::Global(Identifier::new(
+      node.kind(),
+      node,
+    ))),
+    firebase_type,
+  )
+}
+
+fn parse_namespace_reserved_function<'b>(
+  node: Node<'b>,
+) -> (Option<IdentifierLocality>, FirebaseType) {
+  let firebase_type = match node.child(0).unwrap().kind() {
+    "get" => FirebaseType::Resource,
+    "getAfter" => FirebaseType::Resource,
+    "exists" => FirebaseType::Boolean,
+    "existsAfer" => FirebaseType::Boolean,
+    "debug" => FirebaseType::Boolean,
+    _ => FirebaseType::UNKNOWN,
+  };
+
+  (
+    Some(IdentifierLocality::Global(Identifier::new(
+      node.kind(),
+      node,
+    ))),
+    firebase_type,
+  )
 }
 
 fn parse_variable<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
   let name = node.utf8_text(source_bytes).unwrap();
-  let variable = Identifier::new(name, node);
+
+  let (variable, var_type) = match node.child(0).unwrap().kind() {
+    "identifier" => (
+      Some(IdentifierLocality::Local(Identifier::new(name, node))),
+      FirebaseType::UNKNOWN,
+    ),
+    "namespace_reserved_variable" => parse_namespace_reserved_variable(node.child(0).unwrap()),
+    _ => (None, FirebaseType::UNKNOWN),
+  };
 
   Some(ExprNode::new(
-    Expr::Variable(variable),
-    FirebaseType::UNKNOWN,
+    Expr::Variable(variable.unwrap()),
+    var_type,
     node,
   ))
 }
@@ -410,58 +462,71 @@ fn parse_expr<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
 }
 
 fn parse_member<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
+  let mut object_expr = None;
+  let mut field_expr = None;
+
+  for child in sanitized_children!(node) {
+    match child.kind() {
+      "member_object" => object_expr = parse_member_object(child, source_bytes),
+      "member_field" => field_expr = parse_member_field(child, source_bytes),
+      _ => continue,
+    }
+  }
+
+  Some(ExprNode::new(
+    Expr::Member(object_expr.map(Box::new), field_expr.clone().map(Box::new)),
+    field_expr.map_or(FirebaseType::UNKNOWN, |el| el.inferred_type().clone()),
+    node,
+  ))
+}
+
+fn parse_member_object<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
+  let children: Vec<Node<'b>> = sanitized_children!(node).collect();
+
+  if children.len() != 1 {
+    return None;
+  }
+
+  let object_node = children.first().unwrap();
+
+  let object = match object_node.kind() {
+    "primary" => parse_primary(*object_node, source_bytes),
+    _ => None,
+  };
+
+  object.map(|val| {
+    ExprNode::new(
+      Expr::MemberObject(Some(val.clone()).map(Box::new)),
+      val.inferred_type().clone(),
+      node,
+    )
+  })
+}
+
+fn parse_member_field<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
   let children: Vec<Node<'b>> = sanitized_children!(node).collect();
 
   if children.len() != 2 {
     return None;
   }
 
-  let object_node = &children[0].child(0).unwrap();
-
-  let object = match object_node.kind() {
-    "literal" => parse_literal(*object_node, source_bytes),
-    "variable" => parse_variable(*object_node, source_bytes),
-    "expr_group" => parse_expr(object_node.child(1).unwrap(), source_bytes),
-    "function_call" => parse_function_call(*object_node, source_bytes),
-    "indexing" => parse_indexing(*object_node, source_bytes),
-    _ => None,
-  };
-
-  let object_member_expr = object.map(|val| {
-    ExprNode::new(
-      Expr::MemberObject(Some(val.clone()).map(Box::new)),
-      val.inferred_type().clone(),
-      *object_node,
-    )
-  });
-
   let field_node = &children[1];
 
   let field = match field_node.kind() {
     "variable" => parse_variable(*field_node, source_bytes),
-    "expr_group" => parse_expr(field_node.child(1).unwrap(), source_bytes),
     "function_call" => parse_function_call(*field_node, source_bytes),
-    "indexing" => parse_indexing(*field_node, source_bytes),
+    "field_indexing" => parse_indexing(*field_node, source_bytes),
     "member" => parse_member(*field_node, source_bytes),
     _ => None,
   };
 
-  let field_member_expr = field.map(|val| {
+  field.map(|val| {
     ExprNode::new(
       Expr::MemberField(Some(val.clone()).map(Box::new)),
       val.inferred_type().clone(),
-      *field_node,
+      node,
     )
-  });
-
-  Some(ExprNode::new(
-    Expr::Member(
-      object_member_expr.map(Box::new),
-      field_member_expr.clone().map(Box::new),
-    ),
-    field_member_expr.map_or(FirebaseType::UNKNOWN, |el| el.inferred_type().clone()),
-    node,
-  ))
+  })
 }
 
 fn parse_ternary<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {

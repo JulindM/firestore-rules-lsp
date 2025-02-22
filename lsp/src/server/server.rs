@@ -313,7 +313,7 @@ fn handle_hover<'a>(
 
   let traversal: String = traversal_list
     .into_iter()
-    .map(|v| v.type_str().to_string())
+    .map(|v| v.as_ref().to_owned())
     .collect::<Vec<String>>()
     .join("->");
 

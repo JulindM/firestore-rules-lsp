@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use strum::AsRefStr;
 use tree_sitter::{Node, Point};
 
 use super::rules_namespace::FirebaseType;
@@ -43,7 +44,7 @@ pub trait ToBaseModel: Contains {
   fn to_base_model<'a>(&'a self) -> BaseModel<'a>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsRefStr)]
 pub enum BaseModel<'a> {
   Function(&'a Function),
   FunctionBody(&'a FunctionBody),
@@ -61,36 +62,6 @@ pub enum BaseModel<'a> {
 }
 
 impl<'a> BaseModel<'a> {
-  pub fn type_str(&self) -> &str {
-    match self {
-      BaseModel::Function(_) => "Function",
-      BaseModel::FunctionBody(_) => "FunctionBody",
-      BaseModel::Rule(_) => "Rule",
-      BaseModel::VariableDefinition(_) => "VarDef",
-      BaseModel::MatchPath(_) => "MatchPath",
-      BaseModel::Match(_) => "Match",
-      BaseModel::MatchBody(_) => "MatchBody",
-      BaseModel::ExprNode(node) => match node.expr() {
-        Expr::Unary(_, _) => "Unary",
-        Expr::Binary(_, _, _) => "Binary",
-        Expr::Ternary(_, _, _) => "Ternary",
-        Expr::Member(_, _) => "Member",
-        Expr::Indexing(_, _) => "Indexing",
-        Expr::FunctionCall(_, _) => "FunctionCall",
-        Expr::Literal(_) => "Literal",
-        Expr::Variable(_) => "Variable",
-        Expr::List(_) => "List",
-        Expr::MemberObject(_) => "MemberObj",
-        Expr::MemberField(_) => "MemberField",
-      },
-      BaseModel::Identifier(_) => "Identifier",
-      BaseModel::Literal(_) => "Literal",
-      BaseModel::MatchPathPart(_) => "MatchPathPart",
-      BaseModel::Method(_) => "Method",
-      BaseModel::ServiceBody(_) => "ServiceBody",
-    }
-  }
-
   pub fn span(&self) -> (Point, Point) {
     match self {
       BaseModel::Function(f) => f.span(),
@@ -577,7 +548,6 @@ impl<'a> HasChildren<'a> for MatchBody {
 #[derive(Debug, Clone)]
 pub struct ServiceBody {
   functions: Vec<Function>,
-  variables: Vec<VariableDefinition>,
   matches: Vec<Match>,
   rules: Vec<Rule>,
   start: Point,
@@ -591,25 +561,12 @@ impl ServiceBody {
     rules: Vec<Rule>,
     node: Node<'b>,
   ) -> Self {
-    let mut service_funcs = functions;
-
-    service_funcs.extend([
-      Function::new_postionless("get", [Identifier::new_postionless("path")].to_vec()),
-      Function::new_postionless("getAfter", [Identifier::new_postionless("path")].to_vec()),
-      Function::new_postionless("exists", [Identifier::new_postionless("path")].to_vec()),
-      Function::new_postionless("bool", [Identifier::new_postionless("string")].to_vec()),
-    ]);
-
     Self {
-      functions: service_funcs,
       matches,
+      functions,
       rules,
       start: node.start_position(),
       end: node.end_position(),
-      variables: vec![
-        VariableDefinition::new_postionless("request"),
-        VariableDefinition::new_postionless("resource"),
-      ],
     }
   }
 
@@ -623,10 +580,6 @@ impl ServiceBody {
 
   pub fn rules(&self) -> &[Rule] {
     &self.rules
-  }
-
-  pub fn variables(&self) -> &[VariableDefinition] {
-    &self.variables
   }
 }
 
@@ -642,14 +595,6 @@ impl<'a> ToBaseModel for ServiceBody {
 impl<'a> HasChildren<'a> for ServiceBody {
   fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     let mut res: Vec<&dyn HasChildren<'a>> = vec![];
-
-    for ele in self.functions() {
-      res.push(ele);
-    }
-
-    for ele in self.variables() {
-      res.push(ele);
-    }
 
     for ele in self.matches() {
       res.push(ele);
@@ -761,7 +706,7 @@ pub enum FunctionArgument {
 pub struct Literal {
   start: Point,
   end: Point,
-  literal_type: LiteralType,
+  literal_type: FirebaseType,
 }
 
 bm_contains!(Literal);
@@ -769,12 +714,16 @@ bm_span!(Literal);
 bm_to_base_model!(Literal);
 
 impl Literal {
-  pub fn new<'a>(literal_type: LiteralType, node: Node<'a>) -> Self {
+  pub fn new<'a>(literal_type: FirebaseType, node: Node<'a>) -> Self {
     Self {
       literal_type,
       start: node.start_position(),
       end: node.end_position(),
     }
+  }
+
+  pub fn firebase_type(&self) -> FirebaseType {
+    self.literal_type
   }
 }
 
@@ -814,11 +763,18 @@ impl Operation {
 }
 
 #[derive(Debug, Clone)]
-pub enum LiteralType {
-  Number(f32),
-  Bool(bool),
-  Null,
-  String(String),
+pub enum IdentifierLocality {
+  Local(Identifier),
+  Global(Identifier),
+}
+
+impl IdentifierLocality {
+  pub fn name(&self) -> &str {
+    match &self {
+      IdentifierLocality::Local(identifier) => identifier.value(),
+      IdentifierLocality::Global(identifier) => identifier.value(),
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -838,9 +794,9 @@ pub enum Expr {
   MemberObject(Option<Box<ExprNode>>),
   MemberField(Option<Box<ExprNode>>),
   Indexing(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
-  FunctionCall(Identifier, Vec<FunctionArgument>),
+  FunctionCall(IdentifierLocality, Vec<FunctionArgument>),
   Literal(Literal),
-  Variable(Identifier),
+  Variable(IdentifierLocality),
   List(Vec<ExprNode>),
 }
 
@@ -885,8 +841,8 @@ impl<'a> HasChildren<'a> for ExprNode {
       }
       Expr::Member(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::Indexing(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
-      Expr::FunctionCall(name, function_arguments) => {
-        let mut res: Vec<&dyn HasChildren<'a>> = vec![name];
+      Expr::FunctionCall(_, function_arguments) => {
+        let mut res: Vec<&dyn HasChildren<'a>> = vec![];
 
         function_arguments.iter().for_each(|arg| match arg {
           FunctionArgument::Path(path_segs) => path_segs.iter().for_each(|ps| match ps {

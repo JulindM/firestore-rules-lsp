@@ -136,7 +136,7 @@ fn get_semantic_type(type_str: &str, parent_type: &str) -> Option<(u32, Option<u
     "number" => Some(1),
     "string" => Some(2),
     "variable" => match parent_type {
-      "member" => Some(8),
+      "member_field" => Some(8),
       _ => Some(7),
     },
     "identifier" => match parent_type {

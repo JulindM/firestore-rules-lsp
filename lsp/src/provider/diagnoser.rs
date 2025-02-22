@@ -1,9 +1,9 @@
 use lsp_types::{Diagnostic, DiagnosticSeverity, Range};
 use tree_sitter::Node;
 
-use crate::parser::base::{BaseModel, FirestoreTree, HasChildren};
+use crate::parser::base::{BaseModel, Expr, FirestoreTree, HasChildren, IdentifierLocality};
 
-use super::analysis::{is_definable, to_position, try_find_definition};
+use super::analysis::{get_definable_expr, to_position, try_find_definition};
 
 pub fn diagnose_syntax_errors<'a>(node: Node<'a>) -> Vec<Diagnostic> {
   let mut errors: Vec<Diagnostic> = vec![];
@@ -122,9 +122,21 @@ pub fn bfs_execute_at<'a, T>(
 fn find_missing_definitions<'a>(traversal_list: &'a Vec<BaseModel<'a>>) -> Option<Diagnostic> {
   match traversal_list.last() {
     Some(model) => {
-      if !is_definable(model) {
+      let expr = get_definable_expr(model);
+
+      if expr.is_none() {
         return None;
       }
+
+      let err_str = match expr.unwrap() {
+        Expr::FunctionCall(f_ident, __) => {
+          format!("No function definition found for {}", f_ident.name())
+        }
+        Expr::Variable(var_ident) => {
+          format!("No variable definition found for {}", var_ident.name())
+        }
+        _ => "".to_owned(),
+      };
 
       match model {
         BaseModel::ExprNode(_) => {
@@ -147,7 +159,7 @@ fn find_missing_definitions<'a>(traversal_list: &'a Vec<BaseModel<'a>>) -> Optio
             code: None,
             code_description: None,
             source: None,
-            message: "No function definition found".to_owned(),
+            message: err_str.to_owned(),
             related_information: None,
             tags: None,
             data: None,
