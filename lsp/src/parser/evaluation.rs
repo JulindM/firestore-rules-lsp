@@ -1,4 +1,4 @@
-use std::vec;
+use std::{f32::consts::E, vec};
 
 use tree_sitter::{Node, Tree};
 
@@ -427,6 +427,14 @@ fn parse_member<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
     _ => None,
   };
 
+  let object_member_expr = object.map(|val| {
+    ExprNode::new(
+      Expr::MemberObject(Some(val.clone()).map(Box::new)),
+      val.inferred_type().clone(),
+      *object_node,
+    )
+  });
+
   let field_node = &children[1];
 
   let field = match field_node.kind() {
@@ -438,16 +446,20 @@ fn parse_member<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
     _ => None,
   };
 
-  let expr = Expr::Member(object.map(Box::new), field.clone().map(Box::new));
-
-  eprintln!("{:?}", expr);
+  let field_member_expr = field.map(|val| {
+    ExprNode::new(
+      Expr::MemberField(Some(val.clone()).map(Box::new)),
+      val.inferred_type().clone(),
+      *field_node,
+    )
+  });
 
   Some(ExprNode::new(
-    expr,
-    field
-      .and_then(|f| Some(f.inferred_type().clone()))
-      .or(Some(FirebaseType::UNKNOWN))
-      .unwrap(),
+    Expr::Member(
+      object_member_expr.map(Box::new),
+      field_member_expr.clone().map(Box::new),
+    ),
+    field_member_expr.map_or(FirebaseType::UNKNOWN, |el| el.inferred_type().clone()),
     node,
   ))
 }

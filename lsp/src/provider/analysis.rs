@@ -6,8 +6,9 @@ use lsp_types::{
 use tree_sitter::{Point, Tree};
 
 use crate::parser::{
-  base::{BaseModel, Expr, FirestoreTree, HasChildren, MatchPathPartType, ToBaseModel},
-  rules_namespace::FirebaseTypeTrait,
+  base::{BaseModel, Expr, ExprNode, FirestoreTree, HasChildren, MatchPathPartType, ToBaseModel},
+  extensions,
+  rules_namespace::{FirebaseType, FirebaseTypeTrait},
 };
 
 use super::diagnoser::{diagnose_linting_errors, diagnose_syntax_errors};
@@ -181,47 +182,56 @@ pub fn build_diagnostics(tree: &Tree, firestore_tree: &FirestoreTree) -> Vec<Dia
 }
 
 pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec<CompletionItem> {
-  if traversing_path.is_empty() {
-    return vec![];
-  }
-
-  let mut reverse_traversal = traversing_path.clone();
-  reverse_traversal.reverse();
-
-  let innermost_typeable = reverse_traversal.iter().find_map(|el| match el {
-    BaseModel::ExprNode(expr) => Some(expr.inferred_type()),
-    _ => None,
+  let mut expressions = traversing_path.into_iter().rev().filter_map(|b| {
+    if let BaseModel::ExprNode(expr) = b {
+      return Some(expr.expr());
+    } else {
+      return None;
+    }
   });
 
-  if let Some(type_hit) = innermost_typeable {
-    let properties = type_hit.properties();
-    let props = properties.iter().map(|p| CompletionItem {
-      label: p.0.to_owned(),
-      insert_text: Some(p.0.to_owned()),
-      kind: Some(CompletionItemKind::PROPERTY),
-      ..Default::default()
-    });
-
-    let methods = type_hit.methods();
-    let methods = methods.iter().map(|p| CompletionItem {
-      label: format!(
-        "{}{}",
-        p.0.to_owned(),
-        // TODO when parameters are there
-        if p.2.is_empty() { "()" } else { "(...)" }
-      ),
-      insert_text: Some(format!(
-        "{}{}",
-        p.0.to_owned(),
-        // TODO when parameters are there
-        if p.2.is_empty() { "()" } else { "()" }
-      )),
-      kind: Some(CompletionItemKind::FUNCTION),
-      ..Default::default()
-    });
-
-    return Vec::from_iter(props.chain(methods));
+  while let Some(val) = expressions.next() {
+    if let Expr::MemberField(_) = val {
+      break;
+    } else {
+      continue;
+    }
   }
 
-  vec![]
+  let member_opt = expressions.next();
+
+  let type_hit = match member_opt {
+    Some(Expr::Member(object, _)) => object
+      .clone()
+      .map_or(FirebaseType::UNKNOWN, |val| val.inferred_type().clone()),
+    _ => return vec![],
+  };
+
+  let properties = type_hit.properties();
+  let props = properties.iter().map(|p| CompletionItem {
+    label: p.0.to_owned(),
+    insert_text: Some(p.0.to_owned()),
+    kind: Some(CompletionItemKind::PROPERTY),
+    ..Default::default()
+  });
+
+  let methods = type_hit.methods();
+  let methods = methods.iter().map(|p| CompletionItem {
+    label: format!(
+      "{}{}",
+      p.0.to_owned(),
+      // TODO when parameters are there
+      if p.2.is_empty() { "()" } else { "(...)" }
+    ),
+    insert_text: Some(format!(
+      "{}{}",
+      p.0.to_owned(),
+      // TODO when parameters are there
+      if p.2.is_empty() { "()" } else { "()" }
+    )),
+    kind: Some(CompletionItemKind::FUNCTION),
+    ..Default::default()
+  });
+
+  return Vec::from_iter(props.chain(methods));
 }

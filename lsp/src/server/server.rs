@@ -38,6 +38,7 @@ pub fn start_server(startup_type: StartUpType, mut parser: Parser) -> Result<(),
     definition_provider: Some(OneOf::Left(true)),
     completion_provider: Some(CompletionOptions {
       trigger_characters: Some(vec![".".to_owned()]),
+      all_commit_characters: Some(vec![]),
       ..Default::default()
     }),
     semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
@@ -136,9 +137,7 @@ fn handle_completion_request<'a>(
   connection: &Connection,
 ) {
   let text_document = definition_r.1.text_document_position.text_document;
-  let mut position = definition_r.1.text_document_position.position;
-
-  position.character -= 1;
+  let position = definition_r.1.text_document_position.position;
 
   let body = match try_get_body(evaulated_trees, &text_document) {
     Some(value) => value,

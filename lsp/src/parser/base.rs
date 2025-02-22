@@ -80,6 +80,8 @@ impl<'a> BaseModel<'a> {
         Expr::Literal(_) => "Literal",
         Expr::Variable(_) => "Variable",
         Expr::List(_) => "List",
+        Expr::MemberObject(_) => "MemberObj",
+        Expr::MemberField(_) => "MemberField",
       },
       BaseModel::Identifier(_) => "Identifier",
       BaseModel::Literal(_) => "Literal",
@@ -105,11 +107,6 @@ impl<'a> BaseModel<'a> {
       BaseModel::Method(m) => m.span(),
       BaseModel::ServiceBody(body) => body.span(),
     }
-  }
-
-  pub fn is_positionless(&self) -> bool {
-    let (start, end) = self.span();
-    return start.row == 0 && start.column == 0 && end.row == 0 && end.column == 0;
   }
 }
 
@@ -838,6 +835,8 @@ pub enum Expr {
     Option<Box<ExprNode>>,
   ),
   Member(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
+  MemberObject(Option<Box<ExprNode>>),
+  MemberField(Option<Box<ExprNode>>),
   Indexing(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
   FunctionCall(Identifier, Vec<FunctionArgument>),
   Literal(Literal),
@@ -868,7 +867,6 @@ impl ExprNode {
   }
 
   pub fn inferred_type(&self) -> &FirebaseType {
-    eprintln!("{:?}", &self);
     &self.inferred_type
   }
 }
@@ -900,7 +898,15 @@ impl<'a> HasChildren<'a> for ExprNode {
 
         res
       }
-      _ => vec![],
+      Expr::MemberObject(expr_node) => resolve_expr_nest(vec![expr_node]),
+      Expr::MemberField(expr_node) => resolve_expr_nest(vec![expr_node]),
+      Expr::List(expr_nodes) => {
+        let mut res: Vec<&dyn HasChildren<'a>> = vec![];
+        expr_nodes.iter().for_each(|n| res.push(n));
+        res
+      }
+      Expr::Literal(_) => vec![],
+      Expr::Variable(_) => vec![],
     }
   }
 }
