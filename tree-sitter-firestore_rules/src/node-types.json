@@ -218,6 +218,10 @@
           "named": true
         },
         {
+          "type": "range",
+          "named": true
+        },
+        {
           "type": "variable",
           "named": true
         }
@@ -352,6 +356,41 @@
           "named": true
         },
         {
+          "type": "member_object",
+          "named": true
+        },
+        {
+          "type": "variable",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "member_object",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "expr_group",
+          "named": true
+        },
+        {
+          "type": "function_call",
+          "named": true
+        },
+        {
+          "type": "indexing",
+          "named": true
+        },
+        {
+          "type": "literal",
+          "named": true
+        },
+        {
           "type": "variable",
           "named": true
         }
@@ -457,6 +496,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "range",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "relation",
@@ -700,6 +744,10 @@
   },
   {
     "type": "/",
+    "named": false
+  },
+  {
+    "type": "/d+/",
     "named": false
   },
   {

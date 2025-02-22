@@ -84,23 +84,36 @@ module.exports = grammar({
     primary: ($) =>
       choice($.literal, $.variable, $.expr_group, $.list, $.function_call),
 
+    range: (_) => seq(/\d+/, ":", "/d+/"),
+
     indexing: ($) =>
       prec.left(
         8,
         seq(
           choice(choice($.variable, $.expr_group, $.function_call), $.list),
           "[",
-          $.expr,
+          choice($.expr, $.range),
           "]"
         )
+      ),
+
+    member_object: ($) =>
+      seq(
+        choice(
+          $.literal,
+          $.variable,
+          $.expr_group,
+          $.function_call,
+          $.indexing
+        ),
+        token.immediate(".")
       ),
 
     member: ($) =>
       prec.right(
         8,
         seq(
-          choice($.variable, $.expr_group, $.function_call, $.indexing),
-          ".",
+          $.member_object,
           choice(
             $.variable,
             $.expr_group,

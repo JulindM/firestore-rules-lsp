@@ -443,6 +443,23 @@
         }
       ]
     },
+    "range": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "PATTERN",
+          "value": "\\d+"
+        },
+        {
+          "type": "STRING",
+          "value": ":"
+        },
+        {
+          "type": "STRING",
+          "value": "/d+/"
+        }
+      ]
+    },
     "indexing": {
       "type": "PREC_LEFT",
       "value": 8,
@@ -480,8 +497,17 @@
             "value": "["
           },
           {
-            "type": "SYMBOL",
-            "name": "expr"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "expr"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "range"
+              }
+            ]
           },
           {
             "type": "STRING",
@@ -490,6 +516,43 @@
         ]
       }
     },
+    "member_object": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "literal"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "variable"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "expr_group"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "function_call"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "indexing"
+            }
+          ]
+        },
+        {
+          "type": "IMMEDIATE_TOKEN",
+          "content": {
+            "type": "STRING",
+            "value": "."
+          }
+        }
+      ]
+    },
     "member": {
       "type": "PREC_RIGHT",
       "value": 8,
@@ -497,29 +560,8 @@
         "type": "SEQ",
         "members": [
           {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "variable"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "expr_group"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "function_call"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "indexing"
-              }
-            ]
-          },
-          {
-            "type": "STRING",
-            "value": "."
+            "type": "SYMBOL",
+            "name": "member_object"
           },
           {
             "type": "CHOICE",
