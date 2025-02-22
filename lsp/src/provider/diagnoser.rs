@@ -128,18 +128,20 @@ fn find_missing_definitions<'a>(traversal_list: &'a Vec<BaseModel<'a>>) -> Optio
 
       match model {
         BaseModel::ExprNode(_) => {
-          let def_hit = try_find_definition(traversal_list);
+          let (opt, none_allowed) = try_find_definition(traversal_list);
 
-          if let Some(_) = def_hit {
+          if none_allowed {
+            return None;
+          };
+
+          if !none_allowed && opt.is_some() {
             return None;
           }
 
-          let span = model.span();
-
           return Some(Diagnostic {
             range: Range {
-              start: to_position(span.0),
-              end: to_position(span.1),
+              start: to_position(model.span().0),
+              end: to_position(model.span().1),
             },
             severity: Some(DiagnosticSeverity::ERROR),
             code: None,

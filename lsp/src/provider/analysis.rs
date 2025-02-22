@@ -1,8 +1,13 @@
-use lsp_types::{Diagnostic, Position};
+use std::fmt::format;
+
+use lsp_types::{
+  CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Diagnostic, Position,
+};
 use tree_sitter::{Point, Tree};
 
-use crate::parser::base::{
-  BaseModel, Expr, FirestoreTree, HasChildren, MatchPathPartType, ToBaseModel,
+use crate::parser::{
+  base::{BaseModel, Expr, FirestoreTree, HasChildren, MatchPathPartType, ToBaseModel},
+  rules_namespace::FirebaseTypeTrait,
 };
 
 use super::diagnoser::{diagnose_linting_errors, diagnose_syntax_errors};
@@ -32,9 +37,11 @@ pub fn is_definable<'a>(model: &BaseModel<'a>) -> bool {
   }
 }
 
-pub fn try_find_definition<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Option<BaseModel<'a>> {
+pub fn try_find_definition<'a>(
+  traversing_path: &Vec<BaseModel<'a>>,
+) -> (Option<BaseModel<'a>>, bool) {
   if traversing_path.is_empty() {
-    return None;
+    return (None, true);
   }
 
   let mut reverse_traversal = traversing_path.clone();
@@ -46,29 +53,26 @@ pub fn try_find_definition<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Option<B
     .find(|(_, el)| is_definable(el));
 
   if innermost_identifiable.is_none() {
-    return None;
+    return (None, true);
   }
 
   let (hit_idx, to_identify) = innermost_identifiable.unwrap();
 
   let (_, to_look_in) = reverse_traversal.split_at(hit_idx + 1);
 
-  let member_hits = to_look_in
-    .iter()
-    .filter(|el| match el {
-      BaseModel::ExprNode(expr) => match expr.expr() {
-        Expr::Member(_, _) => true,
-        _ => false,
-      },
+  let member_hits = to_look_in.iter().find(|el| match el {
+    BaseModel::ExprNode(expr) => match expr.expr() {
+      Expr::Member(_, _) => true,
       _ => false,
-    })
-    .count();
+    },
+    _ => false,
+  });
 
-  if member_hits > 2 {
-    return None;
+  if member_hits.is_some() {
+    return (None, true);
   }
 
-  match to_identify {
+  let hit = match to_identify {
     BaseModel::ExprNode(node) => match node.expr() {
       Expr::FunctionCall(fname, _) => to_look_in
         .iter()
@@ -132,7 +136,9 @@ pub fn try_find_definition<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Option<B
       _ => None,
     },
     _ => None,
-  }
+  };
+
+  (hit, false)
 }
 
 pub fn get_path_traversal<'a>(
@@ -172,4 +178,50 @@ pub fn build_diagnostics(tree: &Tree, firestore_tree: &FirestoreTree) -> Vec<Dia
   diagnostics.append(&mut linting_warnings);
 
   diagnostics
+}
+
+pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec<CompletionItem> {
+  if traversing_path.is_empty() {
+    return vec![];
+  }
+
+  let mut reverse_traversal = traversing_path.clone();
+  reverse_traversal.reverse();
+
+  let innermost_typeable = reverse_traversal.iter().find_map(|el| match el {
+    BaseModel::ExprNode(expr) => Some(expr.inferred_type()),
+    _ => None,
+  });
+
+  if let Some(type_hit) = innermost_typeable {
+    let properties = type_hit.properties();
+    let props = properties.iter().map(|p| CompletionItem {
+      label: p.0.to_owned(),
+      insert_text: Some(p.0.to_owned()),
+      kind: Some(CompletionItemKind::PROPERTY),
+      ..Default::default()
+    });
+
+    let methods = type_hit.methods();
+    let methods = methods.iter().map(|p| CompletionItem {
+      label: format!(
+        "{}{}",
+        p.0.to_owned(),
+        // TODO when parameters are there
+        if p.2.is_empty() { "()" } else { "(...)" }
+      ),
+      insert_text: Some(format!(
+        "{}{}",
+        p.0.to_owned(),
+        // TODO when parameters are there
+        if p.2.is_empty() { "()" } else { "()" }
+      )),
+      kind: Some(CompletionItemKind::FUNCTION),
+      ..Default::default()
+    });
+
+    return Vec::from_iter(props.chain(methods));
+  }
+
+  vec![]
 }

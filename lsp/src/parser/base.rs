@@ -2,6 +2,8 @@ use std::fmt::Debug;
 
 use tree_sitter::{Node, Point};
 
+use super::rules_namespace::FirebaseType;
+
 macro_rules! bm_span(
   ($clazz:ident $($life:lifetime),*) => (
     impl<$($life),*> Spanned for $clazz<$($life),*> {
@@ -103,6 +105,11 @@ impl<'a> BaseModel<'a> {
       BaseModel::Method(m) => m.span(),
       BaseModel::ServiceBody(body) => body.span(),
     }
+  }
+
+  pub fn is_positionless(&self) -> bool {
+    let (start, end) = self.span();
+    return start.row == 0 && start.column == 0 && end.row == 0 && end.column == 0;
   }
 }
 
@@ -593,6 +600,7 @@ impl ServiceBody {
       Function::new_postionless("get", [Identifier::new_postionless("path")].to_vec()),
       Function::new_postionless("getAfter", [Identifier::new_postionless("path")].to_vec()),
       Function::new_postionless("exists", [Identifier::new_postionless("path")].to_vec()),
+      Function::new_postionless("bool", [Identifier::new_postionless("string")].to_vec()),
     ]);
 
     Self {
@@ -741,19 +749,6 @@ impl<'a> HasChildren<'a> for Rule {
 }
 
 #[derive(Debug, Clone)]
-pub enum Operation {
-  Negation,
-  Addition,
-  Multiplication,
-  Division,
-  Relation,
-  And,
-  Or,
-  Substraction,
-  Modulo,
-}
-
-#[derive(Debug, Clone)]
 pub enum PathSegment {
   String(Identifier),
   EvalPath(ExprNode),
@@ -793,6 +788,35 @@ impl<'a> HasChildren<'a> for Literal {
 }
 
 #[derive(Debug, Clone)]
+pub enum Operation {
+  Negation,
+  Addition,
+  Multiplication,
+  Division,
+  Relation,
+  And,
+  Or,
+  Substraction,
+  Modulo,
+}
+
+impl Operation {
+  pub fn infer_type(&self) -> FirebaseType {
+    match self {
+      Operation::Negation => FirebaseType::String,
+      Operation::Addition => FirebaseType::Number,
+      Operation::Multiplication => FirebaseType::Number,
+      Operation::Division => FirebaseType::Number,
+      Operation::Relation => FirebaseType::Number,
+      Operation::And => FirebaseType::Boolean,
+      Operation::Or => FirebaseType::Boolean,
+      Operation::Substraction => FirebaseType::Number,
+      Operation::Modulo => FirebaseType::Number,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
 pub enum LiteralType {
   Number(f32),
   Bool(bool),
@@ -826,12 +850,14 @@ pub struct ExprNode {
   expr: Expr,
   start: Point,
   end: Point,
+  inferred_type: FirebaseType,
 }
 
 impl ExprNode {
-  pub fn new<'a>(expr: Expr, node: Node<'a>) -> Self {
+  pub fn new<'a>(expr: Expr, inferred_type: FirebaseType, node: Node<'a>) -> Self {
     Self {
       expr,
+      inferred_type,
       start: node.start_position(),
       end: node.end_position(),
     }
@@ -839,6 +865,11 @@ impl ExprNode {
 
   pub fn expr(&self) -> &Expr {
     &self.expr
+  }
+
+  pub fn inferred_type(&self) -> &FirebaseType {
+    eprintln!("{:?}", &self);
+    &self.inferred_type
   }
 }
 

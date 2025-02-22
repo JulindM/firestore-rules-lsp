@@ -8,11 +8,14 @@ use tree_sitter::{Parser, Tree};
 
 use crate::{
   parser::{
-    base::{FirestoreTree, MatchBody, ServiceBody},
+    base::{FirestoreTree, ServiceBody},
     evaluation::evaluate_tree,
   },
   provider::{
-    analysis::{build_diagnostics, get_path_traversal, to_position, try_find_definition},
+    analysis::{
+      build_diagnostics, get_path_traversal, get_possible_completions, to_position,
+      try_find_definition,
+    },
     tokenizer::{get_used_semantic_token_modifiers, get_used_semantic_token_types, tokenize},
   },
   StartUpType,
@@ -33,6 +36,10 @@ pub fn start_server(startup_type: StartUpType, mut parser: Parser) -> Result<(),
     text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
     hover_provider: Some(HoverProviderCapability::Simple(true)),
     definition_provider: Some(OneOf::Left(true)),
+    completion_provider: Some(CompletionOptions {
+      trigger_characters: Some(vec![".".to_owned()]),
+      ..Default::default()
+    }),
     semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
       SemanticTokensOptions {
         work_done_progress_options: WorkDoneProgressOptions {
@@ -89,6 +96,11 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
           continue;
         }
 
+        if let Ok(autocomplete_r) = cast_req::<Completion>(&req) {
+          handle_completion_request(autocomplete_r, &evaulated_trees, req, &connection);
+          continue;
+        }
+
         if let Ok(tokenize_r) = cast_req::<SemanticTokensFullRequest>(&req) {
           handle_tokenize_request(tokenize_r, &evaulated_trees, req, &connection);
           continue;
@@ -115,6 +127,39 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
   }
 
   Ok(())
+}
+
+fn handle_completion_request<'a>(
+  definition_r: (RequestId, CompletionParams),
+  evaulated_trees: &HashMap<String, (FirestoreTree, Tree)>,
+  req: Request,
+  connection: &Connection,
+) {
+  let text_document = definition_r.1.text_document_position.text_document;
+  let mut position = definition_r.1.text_document_position.position;
+
+  position.character -= 1;
+
+  let body = match try_get_body(evaulated_trees, &text_document) {
+    Some(value) => value,
+    None => {
+      Message::Response(Response::new_ok(req.id.clone(), "No body found"));
+      return;
+    }
+  };
+
+  let traversal = get_path_traversal(position, body);
+
+  let completions = get_possible_completions(&traversal);
+
+  let completion_resp = CompletionResponse::List(CompletionList {
+    is_incomplete: false,
+    items: completions,
+  });
+
+  let msg = Response::new_ok::<CompletionResponse>(req.id, completion_resp);
+
+  let _ = connection.sender.try_send(Message::Response(msg));
 }
 
 fn publish_diagnostics<'a>(
@@ -210,19 +255,19 @@ fn handle_go_to_definition<'a>(
 
   let traversal = get_path_traversal(definition_param.position, body);
 
-  let definition = try_find_definition(&traversal);
+  let (definition_opt, should_be_none) = try_find_definition(&traversal);
 
-  if definition.is_none() {
+  if should_be_none || definition_opt.is_none() {
     let _ = connection
       .sender
       .try_send(Message::Response(Response::new_ok(
         req.id.clone(),
-        "No definition found",
+        definition_param.position,
       )));
     return;
   }
 
-  let span = definition.unwrap().span();
+  let span = definition_opt.unwrap().span();
 
   let definition_resp = GotoDefinitionResponse::Scalar(Location::new(
     definition_param.text_document.uri,
