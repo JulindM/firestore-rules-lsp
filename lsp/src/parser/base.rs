@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use strum::AsRefStr;
 use tree_sitter::{Node, Point};
 
-use super::rules_namespace::FirebaseType;
+use super::types::FirebaseType;
 
 macro_rules! bm_span(
   ($clazz:ident $($life:lifetime),*) => (
@@ -29,11 +29,15 @@ macro_rules! bm_to_base_model(
       fn to_base_model<'a>(&'a self) -> BaseModel<'a>{
         BaseModel::$clazz(&self)
       }
+      fn to_mut_base_model<'a>(&'a mut self) -> MutBaseModel<'a>{
+        MutBaseModel::$clazz(self)
+      }
     }
 ));
 
 pub trait HasChildren<'a>: Contains + ToBaseModel + Debug {
   fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>>;
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>>;
 }
 
 pub trait Contains {
@@ -42,9 +46,10 @@ pub trait Contains {
 
 pub trait ToBaseModel: Contains {
   fn to_base_model<'a>(&'a self) -> BaseModel<'a>;
+  fn to_mut_base_model<'a>(&'a mut self) -> MutBaseModel<'a>;
 }
 
-#[derive(Debug, Clone, AsRefStr)]
+#[derive(Clone, AsRefStr)]
 pub enum BaseModel<'a> {
   Function(&'a Function),
   FunctionBody(&'a FunctionBody),
@@ -59,6 +64,23 @@ pub enum BaseModel<'a> {
   Literal(&'a Literal),
   MatchPathPart(&'a MatchPathPart),
   Method(&'a Method),
+}
+
+#[derive(Debug, AsRefStr)]
+pub enum MutBaseModel<'a> {
+  Function(&'a mut Function),
+  FunctionBody(&'a mut FunctionBody),
+  Rule(&'a mut Rule),
+  VariableDefinition(&'a mut VariableDefinition),
+  MatchPath(&'a mut MatchPath),
+  Match(&'a mut Match),
+  MatchBody(&'a mut MatchBody),
+  ServiceBody(&'a mut ServiceBody),
+  ExprNode(&'a mut ExprNode),
+  Identifier(&'a mut Identifier),
+  Literal(&'a mut Literal),
+  MatchPathPart(&'a mut MatchPathPart),
+  Method(&'a mut Method),
 }
 
 impl<'a> BaseModel<'a> {
@@ -77,6 +99,46 @@ impl<'a> BaseModel<'a> {
       BaseModel::MatchPathPart(mpp) => mpp.span(),
       BaseModel::Method(m) => m.span(),
       BaseModel::ServiceBody(body) => body.span(),
+    }
+  }
+}
+
+impl<'a> Debug for BaseModel<'a> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Function(arg0) => f.debug_tuple("Function").finish(),
+      Self::FunctionBody(arg0) => f.debug_tuple("FunctionBody").finish(),
+      Self::Rule(arg0) => f.debug_tuple("Rule").finish(),
+      Self::VariableDefinition(arg0) => f.debug_tuple("VariableDefinition").finish(),
+      Self::MatchPath(arg0) => f.debug_tuple("MatchPath").finish(),
+      Self::Match(arg0) => f.debug_tuple("Match").finish(),
+      Self::MatchBody(arg0) => f.debug_tuple("MatchBody").finish(),
+      Self::ServiceBody(arg0) => f.debug_tuple("ServiceBody").finish(),
+      Self::ExprNode(arg0) => f.debug_tuple("ExprNode").field(arg0).finish(),
+      Self::Identifier(arg0) => f.debug_tuple("Identifier").finish(),
+      Self::Literal(arg0) => f.debug_tuple("Literal").finish(),
+      Self::MatchPathPart(arg0) => f.debug_tuple("MatchPathPart").finish(),
+      Self::Method(arg0) => f.debug_tuple("Method").finish(),
+    }
+  }
+}
+
+impl<'a> MutBaseModel<'a> {
+  pub fn mut_model(self) -> &'a mut dyn HasChildren<'a> {
+    match self {
+      MutBaseModel::Function(f) => f,
+      MutBaseModel::FunctionBody(fb) => fb,
+      MutBaseModel::Rule(r) => r,
+      MutBaseModel::VariableDefinition(vd) => vd,
+      MutBaseModel::MatchPath(mp) => mp,
+      MutBaseModel::Match(m) => m,
+      MutBaseModel::MatchBody(mb) => mb,
+      MutBaseModel::ExprNode(en) => en,
+      MutBaseModel::Identifier(v) => v,
+      MutBaseModel::Literal(l) => l,
+      MutBaseModel::MatchPathPart(mpp) => mpp,
+      MutBaseModel::Method(m) => m,
+      MutBaseModel::ServiceBody(body) => body,
     }
   }
 }
@@ -126,6 +188,10 @@ impl FirestoreTree {
   pub fn body(&self) -> Option<&ServiceBody> {
     self.body.as_ref()
   }
+
+  pub fn mut_body(&mut self) -> Option<&mut ServiceBody> {
+    self.body.as_mut()
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -150,16 +216,6 @@ impl Function {
       body,
       start: node.start_position(),
       end: node.end_position(),
-    }
-  }
-
-  pub fn new_postionless(name: &str, parameters: Vec<Identifier>) -> Self {
-    Self {
-      name: name.to_owned(),
-      parameters,
-      body: None,
-      start: Point::new(0, 0),
-      end: Point::new(0, 0),
     }
   }
 
@@ -193,6 +249,22 @@ impl<'a> HasChildren<'a> for Function {
     }
 
     res.push(self.body().unwrap());
+
+    res
+  }
+
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>> {
+    let mut res = self
+      .parameters
+      .iter_mut()
+      .map(|val| val as &mut dyn HasChildren<'a>)
+      .collect();
+
+    if self.body.is_none() {
+      return res;
+    }
+
+    res.push(self.body.as_mut().unwrap());
 
     res
   }
@@ -248,6 +320,21 @@ impl<'a> HasChildren<'a> for FunctionBody {
     res.push(self.ret().unwrap());
     res
   }
+
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>> {
+    let mut res = self
+      .variable_defs
+      .iter_mut()
+      .map(|el| el as &mut dyn HasChildren<'a>)
+      .collect();
+
+    if self.ret.is_none() {
+      return res;
+    }
+
+    res.push(self.ret.as_mut().unwrap());
+    res
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -265,15 +352,6 @@ impl VariableDefinition {
       definition,
       start: node.start_position(),
       end: node.end_position(),
-    }
-  }
-
-  pub fn new_postionless<'a>(name: &str) -> Self {
-    Self {
-      name: name.to_owned(),
-      definition: None,
-      start: Point::new(0, 0),
-      end: Point::new(0, 0),
     }
   }
 
@@ -298,6 +376,14 @@ impl<'a> HasChildren<'a> for VariableDefinition {
 
     vec![self.definition().unwrap()]
   }
+
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>> {
+    if self.definition().is_none() {
+      return vec![];
+    };
+
+    vec![self.definition.as_mut().unwrap()]
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -316,14 +402,6 @@ impl Identifier {
     }
   }
 
-  pub fn new_postionless<'a>(name: &str) -> Self {
-    Self {
-      value: String::from(name),
-      start: Point::new(0, 0),
-      end: Point::new(0, 0),
-    }
-  }
-
   pub fn value(&self) -> &str {
     &self.value
   }
@@ -335,6 +413,10 @@ bm_to_base_model!(Identifier);
 
 impl<'a> HasChildren<'a> for Identifier {
   fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
+    vec![]
+  }
+
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>> {
     vec![]
   }
 }
@@ -383,6 +465,10 @@ impl<'a> HasChildren<'a> for MatchPathPart {
   fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     vec![]
   }
+
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>> {
+    vec![]
+  }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -420,9 +506,17 @@ bm_to_base_model!(MatchPath);
 impl<'a> HasChildren<'a> for MatchPath {
   fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     self
-      .path_parts()
+      .path_parts
       .iter()
       .map(|val| val as &dyn HasChildren<'a>)
+      .collect()
+  }
+
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>> {
+    self
+      .path_parts
+      .iter_mut()
+      .map(|val| val as &mut dyn HasChildren<'a>)
       .collect()
   }
 }
@@ -456,12 +550,7 @@ impl Match {
 
 bm_contains!(Match);
 bm_span!(Match);
-
-impl<'a> ToBaseModel for Match {
-  fn to_base_model<'b>(&'b self) -> BaseModel<'b> {
-    BaseModel::Match(&self)
-  }
-}
+bm_to_base_model!(Match);
 
 impl<'a> HasChildren<'a> for Match {
   fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
@@ -473,6 +562,20 @@ impl<'a> HasChildren<'a> for Match {
 
     if self.body.is_some() {
       res.push(self.body().unwrap());
+    }
+
+    res
+  }
+
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>> {
+    let mut res: Vec<&mut dyn HasChildren<'a>> = vec![];
+
+    if self.path.is_some() {
+      res.push(self.path.as_mut().unwrap());
+    }
+
+    if self.body.is_some() {
+      res.push(self.body.as_mut().unwrap());
     }
 
     res
@@ -507,39 +610,29 @@ impl MatchBody {
   pub fn functions(&self) -> &[Function] {
     &self.functions
   }
-
-  pub fn matches(&self) -> &[Match] {
-    &self.matches
-  }
-
-  pub fn rules(&self) -> &[Rule] {
-    &self.rules
-  }
 }
 
 bm_contains!(MatchBody);
 bm_span!(MatchBody);
-impl<'a> ToBaseModel for MatchBody {
-  fn to_base_model<'b>(&'b self) -> BaseModel<'b> {
-    BaseModel::MatchBody(&self)
-  }
-}
+bm_to_base_model!(MatchBody);
 
 impl<'a> HasChildren<'a> for MatchBody {
   fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     let mut res: Vec<&dyn HasChildren<'a>> = vec![];
 
-    for ele in self.functions() {
-      res.push(ele);
-    }
+    self.functions.iter().for_each(|f| res.push(f));
+    self.matches.iter().for_each(|f| res.push(f));
+    self.rules.iter().for_each(|f| res.push(f));
 
-    for ele in self.matches() {
-      res.push(ele);
-    }
+    res
+  }
 
-    for ele in self.rules() {
-      res.push(ele);
-    }
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>> {
+    let mut res: Vec<&mut dyn HasChildren<'a>> = vec![];
+
+    self.functions.iter_mut().for_each(|f| res.push(f));
+    self.matches.iter_mut().for_each(|f| res.push(f));
+    self.rules.iter_mut().for_each(|f| res.push(f));
 
     res
   }
@@ -573,36 +666,29 @@ impl ServiceBody {
   pub fn functions(&self) -> &[Function] {
     &self.functions
   }
-
-  pub fn matches(&self) -> &[Match] {
-    &self.matches
-  }
-
-  pub fn rules(&self) -> &[Rule] {
-    &self.rules
-  }
 }
 
 bm_contains!(ServiceBody);
 bm_span!(ServiceBody);
-
-impl<'a> ToBaseModel for ServiceBody {
-  fn to_base_model<'b>(&'b self) -> BaseModel<'b> {
-    BaseModel::ServiceBody(&self)
-  }
-}
+bm_to_base_model!(ServiceBody);
 
 impl<'a> HasChildren<'a> for ServiceBody {
   fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
     let mut res: Vec<&dyn HasChildren<'a>> = vec![];
 
-    for ele in self.matches() {
-      res.push(ele);
-    }
+    self.functions.iter().for_each(|f| res.push(f));
+    self.matches.iter().for_each(|f| res.push(f));
+    self.rules.iter().for_each(|f| res.push(f));
 
-    for ele in self.rules() {
-      res.push(ele);
-    }
+    res
+  }
+
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>> {
+    let mut res: Vec<&mut dyn HasChildren<'a>> = vec![];
+
+    self.functions.iter_mut().for_each(|f| res.push(f));
+    self.matches.iter_mut().for_each(|f| res.push(f));
+    self.rules.iter_mut().for_each(|f| res.push(f));
 
     res
   }
@@ -627,6 +713,10 @@ impl Method {
 
 impl<'a> HasChildren<'a> for Method {
   fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
+    vec![]
+  }
+
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>> {
     vec![]
   }
 }
@@ -688,6 +778,16 @@ impl<'a> HasChildren<'a> for Rule {
 
     res
   }
+
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>> {
+    let mut res: Vec<&mut dyn HasChildren<'a>> = vec![];
+
+    if self.condition.is_some() {
+      res.push(self.condition.as_mut().unwrap());
+    }
+
+    res
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -729,6 +829,10 @@ impl Literal {
 
 impl<'a> HasChildren<'a> for Literal {
   fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
+    vec![]
+  }
+
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>> {
     vec![]
   }
 }
@@ -777,7 +881,7 @@ impl IdentifierLocality {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsRefStr)]
 pub enum Expr {
   Unary(Option<Operation>, Option<Box<ExprNode>>),
   Binary(
@@ -800,12 +904,18 @@ pub enum Expr {
   List(Vec<ExprNode>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ExprNode {
   expr: Expr,
   start: Point,
   end: Point,
   inferred_type: FirebaseType,
+}
+
+impl Debug for ExprNode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct(&self.expr.as_ref()).finish()
+  }
 }
 
 impl ExprNode {
@@ -833,7 +943,7 @@ bm_to_base_model!(ExprNode);
 
 impl<'a> HasChildren<'a> for ExprNode {
   fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
-    match self.expr() {
+    match &self.expr {
       Expr::Unary(_, expr_node) => resolve_expr_nest(vec![expr_node]),
       Expr::Binary(_, expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::Ternary(expr_node, expr_node1, expr_node2) => {
@@ -865,6 +975,40 @@ impl<'a> HasChildren<'a> for ExprNode {
       Expr::Variable(_) => vec![],
     }
   }
+
+  fn mut_children(&'a mut self) -> Vec<&'a mut dyn HasChildren<'a>> {
+    match &mut self.expr {
+      Expr::Unary(_, expr_node) => mut_resolve_expr_nest(vec![expr_node]),
+      Expr::Binary(_, expr_node, expr_node1) => mut_resolve_expr_nest(vec![expr_node, expr_node1]),
+      Expr::Ternary(expr_node, expr_node1, expr_node2) => {
+        mut_resolve_expr_nest(vec![expr_node, expr_node1, expr_node2])
+      }
+      Expr::Member(expr_node, expr_node1) => mut_resolve_expr_nest(vec![expr_node, expr_node1]),
+      Expr::Indexing(expr_node, expr_node1) => mut_resolve_expr_nest(vec![expr_node, expr_node1]),
+      Expr::FunctionCall(_, function_arguments) => {
+        let mut res: Vec<&mut dyn HasChildren<'a>> = vec![];
+
+        function_arguments.iter_mut().for_each(|arg| match arg {
+          FunctionArgument::Path(path_segs) => path_segs.iter_mut().for_each(|ps| match ps {
+            PathSegment::String(identifier) => res.push(identifier),
+            PathSegment::EvalPath(expr_node) => res.push(expr_node),
+          }),
+          FunctionArgument::Expr(expr_node) => res.push(expr_node),
+        });
+
+        res
+      }
+      Expr::MemberObject(expr_node) => mut_resolve_expr_nest(vec![expr_node]),
+      Expr::MemberField(expr_node) => mut_resolve_expr_nest(vec![expr_node]),
+      Expr::List(expr_nodes) => {
+        let mut res: Vec<&mut dyn HasChildren<'a>> = vec![];
+        expr_nodes.iter_mut().for_each(|n| res.push(n));
+        res
+      }
+      Expr::Literal(_) => vec![],
+      Expr::Variable(_) => vec![],
+    }
+  }
 }
 
 fn resolve_expr_nest<'a>(
@@ -872,10 +1016,17 @@ fn resolve_expr_nest<'a>(
 ) -> Vec<&'a dyn HasChildren<'a>> {
   expr_node
     .into_iter()
-    .map(|el| {
-      el.as_deref()
-        .map_or_else(|| vec![], |node| vec![node as &dyn HasChildren<'a>])
-    })
-    .flatten()
+    .filter_map(|el| el.as_ref())
+    .map(|el| el.as_ref() as &dyn HasChildren<'a>)
+    .collect()
+}
+
+fn mut_resolve_expr_nest<'a>(
+  expr_node: Vec<&'a mut Option<Box<ExprNode>>>,
+) -> Vec<&'a mut dyn HasChildren<'a>> {
+  expr_node
+    .into_iter()
+    .filter_map(|el| el.as_mut())
+    .map(|el| el.as_mut() as &mut dyn HasChildren<'a>)
     .collect()
 }

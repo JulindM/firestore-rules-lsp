@@ -1,9 +1,9 @@
 use lsp_types::{Diagnostic, DiagnosticSeverity, Range};
-use tree_sitter::Node;
+use tree_sitter::{Node, Tree};
 
-use crate::parser::base::{BaseModel, Expr, FirestoreTree, HasChildren};
+use crate::parser::base::{BaseModel, Expr, FirestoreTree};
 
-use super::analysis::{get_definable_expr, to_position, try_find_definition};
+use super::analysis::{bfs_execute_at, get_definable_expr, to_position, try_find_definition};
 
 pub fn diagnose_syntax_errors<'a>(node: Node<'a>) -> Vec<Diagnostic> {
   let mut errors: Vec<Diagnostic> = vec![];
@@ -88,37 +88,6 @@ pub fn diagnose_linting_errors<'a>(tree: &'a FirestoreTree) -> Vec<Diagnostic> {
   bfs_execute_at(body, &vec![], find_missing_definitions)
 }
 
-type TraversableConsuming<'a, T> = fn(&Vec<BaseModel<'a>>) -> Option<T>;
-
-pub fn bfs_execute_at<'a, T>(
-  nestable: &'a dyn HasChildren<'a>,
-  existing_traversal: &Vec<BaseModel<'a>>,
-  function: TraversableConsuming<'a, T>,
-) -> Vec<T> {
-  // TODO avoid cloning here - use some sort of slice
-  let mut curr_traversal = existing_traversal.clone();
-
-  curr_traversal.push(nestable.to_base_model());
-
-  let mut curr_diagnostics: Vec<T> = vec![];
-
-  let result_opt = function(&curr_traversal);
-
-  if let Some(result) = result_opt {
-    curr_diagnostics.push(result);
-  }
-
-  for child in nestable.children() {
-    let mut child_results = bfs_execute_at(child, &curr_traversal, function);
-
-    if !child_results.is_empty() {
-      curr_diagnostics.append(&mut child_results);
-    }
-  }
-
-  curr_diagnostics
-}
-
 fn find_missing_definitions<'a>(traversal_list: &'a Vec<BaseModel<'a>>) -> Option<Diagnostic> {
   match traversal_list.last() {
     Some(model) => {
@@ -170,4 +139,16 @@ fn find_missing_definitions<'a>(traversal_list: &'a Vec<BaseModel<'a>>) -> Optio
     }
     None => None,
   }
+}
+
+pub fn build_diagnostics(tree: &Tree, firestore_tree: &FirestoreTree) -> Vec<Diagnostic> {
+  let mut diagnostics: Vec<Diagnostic> = vec![];
+
+  let mut syntax_errors = diagnose_syntax_errors(tree.root_node());
+  let mut linting_warnings = diagnose_linting_errors(firestore_tree);
+
+  diagnostics.append(&mut syntax_errors);
+  diagnostics.append(&mut linting_warnings);
+
+  diagnostics
 }

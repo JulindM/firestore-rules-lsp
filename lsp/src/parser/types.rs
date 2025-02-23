@@ -1,5 +1,9 @@
 use strum::IntoStaticStr;
 
+use crate::parser::base::ExprNode;
+
+use super::base::{Expr, FirestoreTree, HasChildren, MutBaseModel};
+
 #[derive(Debug, Clone, Copy, PartialEq, IntoStaticStr)]
 pub enum FirebaseType {
   UNKNOWN,
@@ -145,4 +149,44 @@ impl FirebaseTypeTrait for FirebaseType {
 
     self.into()
   }
+}
+
+pub fn infer_types<'a>(firestore_tree: &'a mut FirestoreTree) {
+  if let None = firestore_tree.body() {
+    return;
+  }
+
+  let mut_top_level_members: Vec<&mut ExprNode> =
+    bfs_mut_find_top_level_members(firestore_tree.mut_body().unwrap());
+
+  for member in mut_top_level_members {
+    // TODO
+  }
+}
+
+fn bfs_mut_find_top_level_members<'a>(nestable: &'a mut dyn HasChildren<'a>) -> Vec<&mut ExprNode> {
+  let bm = nestable.to_mut_base_model();
+
+  if let MutBaseModel::ExprNode(node) = bm {
+    match node.expr() {
+      Expr::Member(_, __) => return vec![node],
+      _ => {
+        let mut child_hits = vec![];
+
+        for child in node.mut_children() {
+          child_hits.append(&mut bfs_mut_find_top_level_members(child));
+        }
+
+        return child_hits;
+      }
+    }
+  }
+
+  let mut child_hits = vec![];
+
+  for child in bm.mut_model().mut_children() {
+    child_hits.append(&mut bfs_mut_find_top_level_members(child));
+  }
+
+  child_hits
 }

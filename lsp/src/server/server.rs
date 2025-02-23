@@ -12,10 +12,8 @@ use crate::{
     evaluation::evaluate_tree,
   },
   provider::{
-    analysis::{
-      build_diagnostics, get_path_traversal, get_possible_completions, to_position,
-      try_find_definition,
-    },
+    analysis::{get_path_traversal, get_possible_completions, to_position, try_find_definition},
+    diagnoser::build_diagnostics,
     tokenizer::{get_used_semantic_token_modifiers, get_used_semantic_token_types, tokenize},
   },
   StartUpType,

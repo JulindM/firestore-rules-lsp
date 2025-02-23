@@ -1,14 +1,10 @@
-use lsp_types::{CompletionItem, CompletionItemKind, Diagnostic, Position};
-use tree_sitter::{Point, Tree};
+use lsp_types::{CompletionItem, CompletionItemKind, Position};
+use tree_sitter::Point;
 
 use crate::parser::{
-  base::{
-    BaseModel, Expr, FirestoreTree, HasChildren, IdentifierLocality, MatchPathPartType, ToBaseModel,
-  },
-  rules_namespace::{FirebaseType, FirebaseTypeTrait},
+  base::{BaseModel, Expr, HasChildren, IdentifierLocality, MatchPathPartType, ToBaseModel},
+  types::{FirebaseType, FirebaseTypeTrait},
 };
-
-use super::diagnoser::{diagnose_linting_errors, diagnose_syntax_errors};
 
 pub fn to_point(position: Position) -> Point {
   Point::new(
@@ -157,18 +153,6 @@ pub fn get_path_traversal<'a>(
   res
 }
 
-pub fn build_diagnostics(tree: &Tree, firestore_tree: &FirestoreTree) -> Vec<Diagnostic> {
-  let mut diagnostics: Vec<Diagnostic> = vec![];
-
-  let mut syntax_errors = diagnose_syntax_errors(tree.root_node());
-  let mut linting_warnings = diagnose_linting_errors(firestore_tree);
-
-  diagnostics.append(&mut syntax_errors);
-  diagnostics.append(&mut linting_warnings);
-
-  diagnostics
-}
-
 pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec<CompletionItem> {
   let mut expressions = traversing_path.into_iter().rev().filter_map(|b| {
     if let BaseModel::ExprNode(expr) = b {
@@ -224,4 +208,35 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
   });
 
   return Vec::from_iter(props.chain(methods));
+}
+
+type TraversableConsuming<'a, T> = fn(&Vec<BaseModel<'a>>) -> Option<T>;
+
+pub fn bfs_execute_at<'a, T>(
+  nestable: &'a dyn HasChildren<'a>,
+  existing_traversal: &Vec<BaseModel<'a>>,
+  function: TraversableConsuming<'a, T>,
+) -> Vec<T> {
+  // TODO avoid cloning here - use some sort of slice
+  let mut curr_traversal = existing_traversal.clone();
+
+  curr_traversal.push(nestable.to_base_model());
+
+  let mut curr_diagnostics: Vec<T> = vec![];
+
+  let result_opt = function(&curr_traversal);
+
+  if let Some(result) = result_opt {
+    curr_diagnostics.push(result);
+  }
+
+  for child in nestable.children() {
+    let mut child_results = bfs_execute_at(child, &curr_traversal, function);
+
+    if !child_results.is_empty() {
+      curr_diagnostics.append(&mut child_results);
+    }
+  }
+
+  curr_diagnostics
 }

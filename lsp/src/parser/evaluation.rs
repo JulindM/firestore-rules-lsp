@@ -8,7 +8,7 @@ use super::{
     IdentifierLocality, Literal, Match, MatchBody, MatchPath, MatchPathPart, MatchPathPartType,
     Method, Operation, PathSegment, Rule, ServiceBody, VariableDefinition,
   },
-  rules_namespace::FirebaseType,
+  types::{infer_types, FirebaseType},
 };
 
 macro_rules! sanitized_children {
@@ -33,7 +33,11 @@ pub fn evaluate_tree(tree: Tree, source_bytes: &[u8]) -> FirestoreTree {
     _ => return,
   });
 
-  return FirestoreTree::new(match_body);
+  let mut tree = FirestoreTree::new(match_body);
+
+  infer_types(&mut tree);
+
+  tree
 }
 
 fn parse_service_definition<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> ServiceBody {
