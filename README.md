@@ -29,21 +29,22 @@ for the lsp to initialize the connection
 
 ### Current capabilites
 
+- Dynamic Type inference
+  - Work is still ongoing on a more broad type inference during variable definition. At the moment the type inference is done through the detection of a global variable/function usage
 - Text Document Synchronization
 - Semantic Tokens Provider
 - Definition Provider
 - Publish Diagnostics Notifications
 - Hover
   - The current hover is a preview of the AST traversal to the lowest denominator under the cursor, so not that interesting
+- Autocomplete
+- Crude linting
+  - Currently it supports diagnostics of variable usages that no definiton was found for them
 
 ### Planned capabilites
 
-- Improved Hover
-  - For the methods and fields of the `request` and `resource` global variables
+- Improved Hover for type documentation
 - Signature Help Request
-  - For the current document defined functions
-  - For the methods within the fields of the `request` and `resource` global variables
-- Linting
 
 ### Also check out
 
