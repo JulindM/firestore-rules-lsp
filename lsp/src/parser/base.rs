@@ -806,7 +806,7 @@ pub enum FunctionArgument {
 pub struct Literal {
   start: Point,
   end: Point,
-  literal_type: FirebaseType,
+  literal_type: Option<FirebaseType>,
 }
 
 bm_contains!(Literal);
@@ -814,7 +814,7 @@ bm_span!(Literal);
 bm_to_base_model!(Literal);
 
 impl Literal {
-  pub fn new<'a>(literal_type: FirebaseType, node: Node<'a>) -> Self {
+  pub fn new<'a>(literal_type: Option<FirebaseType>, node: Node<'a>) -> Self {
     Self {
       literal_type,
       start: node.start_position(),
@@ -822,8 +822,8 @@ impl Literal {
     }
   }
 
-  pub fn firebase_type(&self) -> FirebaseType {
-    self.literal_type
+  pub fn firebase_type(&self) -> Option<&FirebaseType> {
+    self.literal_type.as_ref()
   }
 }
 
@@ -850,33 +850,17 @@ pub enum Operation {
   Modulo,
 }
 
-impl Operation {
-  pub fn infer_type(&self) -> FirebaseType {
-    match self {
-      Operation::Negation => FirebaseType::String,
-      Operation::Addition => FirebaseType::Number,
-      Operation::Multiplication => FirebaseType::Number,
-      Operation::Division => FirebaseType::Number,
-      Operation::Relation => FirebaseType::Number,
-      Operation::And => FirebaseType::Boolean,
-      Operation::Or => FirebaseType::Boolean,
-      Operation::Substraction => FirebaseType::Number,
-      Operation::Modulo => FirebaseType::Number,
-    }
-  }
-}
-
 #[derive(Debug, Clone)]
-pub enum IdentifierLocality {
-  Local(Identifier),
-  Global(Identifier),
+pub enum DefinableIdentifier {
+  Yes(Identifier),
+  No(Identifier),
 }
 
-impl IdentifierLocality {
+impl DefinableIdentifier {
   pub fn name(&self) -> &str {
     match &self {
-      IdentifierLocality::Local(identifier) => identifier.value(),
-      IdentifierLocality::Global(identifier) => identifier.value(),
+      DefinableIdentifier::Yes(identifier) => identifier.value(),
+      DefinableIdentifier::No(identifier) => identifier.value(),
     }
   }
 }
@@ -898,9 +882,9 @@ pub enum Expr {
   MemberObject(Option<Box<ExprNode>>),
   MemberField(Option<Box<ExprNode>>),
   Indexing(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
-  FunctionCall(IdentifierLocality, Vec<FunctionArgument>),
+  FunctionCall(DefinableIdentifier, Vec<FunctionArgument>, FirebaseType),
   Literal(Literal),
-  Variable(IdentifierLocality),
+  Variable(DefinableIdentifier, FirebaseType),
   List(Vec<ExprNode>),
 }
 
@@ -909,7 +893,6 @@ pub struct ExprNode {
   expr: Expr,
   start: Point,
   end: Point,
-  inferred_type: FirebaseType,
 }
 
 impl Debug for ExprNode {
@@ -919,10 +902,9 @@ impl Debug for ExprNode {
 }
 
 impl ExprNode {
-  pub fn new<'a>(expr: Expr, inferred_type: FirebaseType, node: Node<'a>) -> Self {
+  pub fn new<'a>(expr: Expr, node: Node<'a>) -> Self {
     Self {
       expr,
-      inferred_type,
       start: node.start_position(),
       end: node.end_position(),
     }
@@ -932,8 +914,21 @@ impl ExprNode {
     &self.expr
   }
 
-  pub fn inferred_type(&self) -> &FirebaseType {
-    &self.inferred_type
+  pub fn inferred_type(&self) -> Option<&FirebaseType> {
+    match &self.expr {
+      Expr::Member(_, member) => member.as_ref().and_then(|f| f.inferred_type()),
+      Expr::MemberObject(node) => node.as_ref().and_then(|o| o.inferred_type()),
+      Expr::MemberField(node) => node.as_ref().and_then(|f| f.inferred_type()),
+      Expr::FunctionCall(_, _, fir_type) => Some(fir_type),
+      Expr::Literal(literal) => literal.firebase_type(),
+      Expr::Variable(_, fir_type) => Some(fir_type),
+      Expr::List(_) => Some(&FirebaseType::List),
+      _ => None,
+    }
+  }
+
+  pub fn mut_expr<'a>(&mut self) -> &mut Expr {
+    &mut self.expr
   }
 }
 
@@ -951,7 +946,7 @@ impl<'a> HasChildren<'a> for ExprNode {
       }
       Expr::Member(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::Indexing(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
-      Expr::FunctionCall(_, function_arguments) => {
+      Expr::FunctionCall(_, function_arguments, _) => {
         let mut res: Vec<&dyn HasChildren<'a>> = vec![];
 
         function_arguments.iter().for_each(|arg| match arg {
@@ -972,7 +967,7 @@ impl<'a> HasChildren<'a> for ExprNode {
         res
       }
       Expr::Literal(_) => vec![],
-      Expr::Variable(_) => vec![],
+      Expr::Variable(_, _) => vec![],
     }
   }
 
@@ -985,7 +980,7 @@ impl<'a> HasChildren<'a> for ExprNode {
       }
       Expr::Member(expr_node, expr_node1) => mut_resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::Indexing(expr_node, expr_node1) => mut_resolve_expr_nest(vec![expr_node, expr_node1]),
-      Expr::FunctionCall(_, function_arguments) => {
+      Expr::FunctionCall(_, function_arguments, _) => {
         let mut res: Vec<&mut dyn HasChildren<'a>> = vec![];
 
         function_arguments.iter_mut().for_each(|arg| match arg {
@@ -1006,7 +1001,7 @@ impl<'a> HasChildren<'a> for ExprNode {
         res
       }
       Expr::Literal(_) => vec![],
-      Expr::Variable(_) => vec![],
+      Expr::Variable(_, _) => vec![],
     }
   }
 }

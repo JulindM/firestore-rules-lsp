@@ -2,8 +2,8 @@ use lsp_types::{CompletionItem, CompletionItemKind, Position};
 use tree_sitter::Point;
 
 use crate::parser::{
-  base::{BaseModel, Expr, HasChildren, IdentifierLocality, MatchPathPartType, ToBaseModel},
-  types::{FirebaseType, FirebaseTypeTrait},
+  base::{BaseModel, DefinableIdentifier, Expr, HasChildren, MatchPathPartType, ToBaseModel},
+  types::FirebaseTypeTrait,
 };
 
 pub fn to_point(position: Position) -> Point {
@@ -26,12 +26,12 @@ pub fn get_definable_expr<'a>(model: &BaseModel<'a>) -> Option<&'a Expr> {
       let expression = expr.expr();
 
       return match &expression {
-        Expr::FunctionCall(name_locality, __) => match name_locality {
-          IdentifierLocality::Local(_) => Some(expression),
+        Expr::FunctionCall(name_locality, _, _) => match name_locality {
+          DefinableIdentifier::Yes(_) => Some(expression),
           _ => None,
         },
-        Expr::Variable(variable_locality) => match variable_locality {
-          IdentifierLocality::Local(_) => Some(expression),
+        Expr::Variable(variable_locality, _) => match variable_locality {
+          DefinableIdentifier::Yes(_) => Some(expression),
           _ => None,
         },
         _ => None,
@@ -43,9 +43,9 @@ pub fn get_definable_expr<'a>(model: &BaseModel<'a>) -> Option<&'a Expr> {
 
 pub fn try_find_definition<'a>(
   traversing_path: &Vec<BaseModel<'a>>,
-) -> (Option<BaseModel<'a>>, bool) {
+) -> Result<Option<BaseModel<'a>>, ()> {
   if traversing_path.is_empty() {
-    return (None, true);
+    return Err(());
   }
 
   let mut reverse_traversal = traversing_path.clone();
@@ -57,27 +57,15 @@ pub fn try_find_definition<'a>(
     .find_map(|(i, el)| get_definable_expr(el).map_or(None, |expr| Some((i, expr))));
 
   if innermost_identifiable.is_none() {
-    return (None, true);
+    return Err(());
   }
 
   let (hit_idx, to_identify) = innermost_identifiable.unwrap();
 
   let (_, to_look_in) = reverse_traversal.split_at(hit_idx + 1);
 
-  let member_field_descendant = to_look_in.iter().find(|el| match el {
-    BaseModel::ExprNode(expr) => match expr.expr() {
-      Expr::MemberField(_) => true,
-      _ => false,
-    },
-    _ => false,
-  });
-
-  if member_field_descendant.is_some() {
-    return (None, true);
-  }
-
   let hit = match to_identify {
-    Expr::FunctionCall(f_identifier, _) => to_look_in
+    Expr::FunctionCall(f_identifier, _, _) => to_look_in
       .iter()
       .filter_map(|el| match el {
         BaseModel::ServiceBody(sb) => Some(sb.functions()),
@@ -87,7 +75,7 @@ pub fn try_find_definition<'a>(
       .flatten()
       .find(|f| f.name().eq(f_identifier.name()))
       .and_then(|f| Some(f.to_base_model())),
-    Expr::Variable(IdentifierLocality::Local(ident)) => to_look_in
+    Expr::Variable(DefinableIdentifier::Yes(ident), _) => to_look_in
       .iter()
       .filter_map(|el| match el {
         BaseModel::Match(m) if m.path().is_some() => Some(
@@ -123,7 +111,7 @@ pub fn try_find_definition<'a>(
     _ => None,
   };
 
-  (hit, false)
+  Ok(hit)
 }
 
 pub fn get_path_traversal<'a>(
@@ -156,14 +144,14 @@ pub fn get_path_traversal<'a>(
 pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec<CompletionItem> {
   let mut expressions = traversing_path.into_iter().rev().filter_map(|b| {
     if let BaseModel::ExprNode(expr) = b {
-      return Some(expr.expr());
+      return Some(expr);
     } else {
       return None;
     }
   });
 
   while let Some(val) = expressions.next() {
-    if let Expr::MemberField(_) = val {
+    if let Expr::MemberField(_) = val.expr() {
       break;
     } else {
       continue;
@@ -172,18 +160,25 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
 
   let member_opt = expressions.next();
 
-  let type_hit = match member_opt {
-    Some(Expr::Member(object, _)) => object
-      .clone()
-      .map_or(FirebaseType::UNKNOWN, |val| val.inferred_type().clone()),
-    _ => return vec![],
+  let type_hit_opt = match member_opt {
+    Some(node) => match node.expr() {
+      Expr::Member(Some(obj), _) => obj.inferred_type(),
+      _ => None,
+    },
+    _ => None,
   };
+
+  if type_hit_opt.is_none() {
+    return vec![];
+  }
+
+  let type_hit = type_hit_opt.unwrap();
 
   let properties = type_hit.properties();
   let props = properties.iter().map(|p| CompletionItem {
     label: p.0.to_owned(),
     insert_text: Some(p.0.to_owned()),
-    detail: Some(p.1.display_name().to_owned()),
+    detail: Some(p.1.as_ref().to_owned()),
     kind: Some(CompletionItemKind::PROPERTY),
     ..Default::default()
   });
@@ -202,7 +197,7 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
       // TODO when parameters are there
       if p.2.is_empty() { "()" } else { "()" }
     )),
-    detail: Some(p.1.display_name().to_owned()),
+    detail: Some(p.1.as_ref().to_owned()),
     kind: Some(CompletionItemKind::FUNCTION),
     ..Default::default()
   });

@@ -252,28 +252,20 @@ fn handle_go_to_definition<'a>(
 
   let traversal = get_path_traversal(definition_param.position, body);
 
-  let (definition_opt, should_be_none) = try_find_definition(&traversal);
+  let hit = try_find_definition(&traversal);
 
-  if should_be_none || definition_opt.is_none() {
-    let _ = connection
-      .sender
-      .try_send(Message::Response(Response::new_ok(
-        req.id.clone(),
-        definition_param.position,
-      )));
-    return;
-  }
+  let message = match hit {
+    Ok(Some(model)) => Response::new_ok(
+      req.id.clone(),
+      GotoDefinitionResponse::Scalar(Location::new(
+        definition_param.text_document.uri,
+        Range::new(to_position(model.span().0), to_position(model.span().1)),
+      )),
+    ),
+    _ => Response::new_ok(req.id.clone(), definition_param.position),
+  };
 
-  let span = definition_opt.unwrap().span();
-
-  let definition_resp = GotoDefinitionResponse::Scalar(Location::new(
-    definition_param.text_document.uri,
-    Range::new(to_position(span.0), to_position(span.1)),
-  ));
-
-  let msg = Response::new_ok::<GotoDefinitionResponse>(req.id, definition_resp);
-
-  let _ = connection.sender.try_send(Message::Response(msg));
+  let _ = connection.sender.try_send(Message::Response(message));
 }
 
 fn try_get_body<'a>(

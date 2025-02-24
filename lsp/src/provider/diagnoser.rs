@@ -98,46 +98,36 @@ fn find_missing_definitions<'a>(traversal_list: &'a Vec<BaseModel<'a>>) -> Optio
       }
 
       let err_str = match expr.unwrap() {
-        Expr::FunctionCall(f_ident, __) => {
+        Expr::FunctionCall(f_ident, _, _) => {
           format!("No function definition found for {}", f_ident.name())
         }
-        Expr::Variable(var_ident) => {
+        Expr::Variable(var_ident, _) => {
           format!("No variable definition found for {}", var_ident.name())
         }
         _ => "".to_owned(),
       };
 
-      match model {
-        BaseModel::ExprNode(_) => {
-          let (opt, none_allowed) = try_find_definition(traversal_list);
+      let hit = try_find_definition(traversal_list);
 
-          if none_allowed {
-            return None;
-          };
-
-          if !none_allowed && opt.is_some() {
-            return None;
-          }
-
-          return Some(Diagnostic {
-            range: Range {
-              start: to_position(model.span().0),
-              end: to_position(model.span().1),
-            },
-            severity: Some(DiagnosticSeverity::ERROR),
-            code: None,
-            code_description: None,
-            source: None,
-            message: err_str.to_owned(),
-            related_information: None,
-            tags: None,
-            data: None,
-          });
-        }
+      match hit {
+        Ok(None) => Some(Diagnostic {
+          range: Range {
+            start: to_position(model.span().0),
+            end: to_position(model.span().1),
+          },
+          severity: Some(DiagnosticSeverity::ERROR),
+          code: None,
+          code_description: None,
+          source: None,
+          message: err_str.to_owned(),
+          related_information: None,
+          tags: None,
+          data: None,
+        }),
         _ => None,
       }
     }
-    None => None,
+    _ => None,
   }
 }
 

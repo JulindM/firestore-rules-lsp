@@ -1,12 +1,7 @@
-use strum::IntoStaticStr;
+use strum::AsRefStr;
 
-use crate::parser::base::ExprNode;
-
-use super::base::{Expr, FirestoreTree, HasChildren, MutBaseModel};
-
-#[derive(Debug, Clone, Copy, PartialEq, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, AsRefStr)]
 pub enum FirebaseType {
-  UNKNOWN,
   Boolean,
   Bytes,
   Float,
@@ -29,18 +24,19 @@ pub enum FirebaseType {
   math_module,
   timestamp_module,
   duration_module,
+  UNKNOWN,
 }
 
 pub trait FirebaseTypeTrait {
   fn properties(&self) -> Vec<(&'static str, FirebaseType)>;
   fn methods(&self) -> Vec<(&'static str, FirebaseType, Vec<FirebaseType>)>;
-  fn display_name(&self) -> &'static str;
 }
 
 impl FirebaseTypeTrait for FirebaseType {
   fn properties(&self) -> Vec<(&'static str, FirebaseType)> {
     match self {
       FirebaseType::Resource => vec![("data", FirebaseType::Map), ("id", FirebaseType::String)],
+      FirebaseType::Request => vec![("data", FirebaseType::Map), ("id", FirebaseType::String)],
       _ => vec![],
     }
   }
@@ -141,52 +137,44 @@ impl FirebaseTypeTrait for FirebaseType {
       _ => vec![],
     }
   }
+}
 
-  fn display_name(&self) -> &'static str {
-    if FirebaseType::UNKNOWN == *self {
-      return "";
-    }
-
-    self.into()
+pub fn namespace_reserved_function<'b>(name: &str) -> Option<FirebaseType> {
+  match name {
+    "get" => Some(FirebaseType::Resource),
+    "getAfter" => Some(FirebaseType::Resource),
+    "exists" => Some(FirebaseType::Boolean),
+    "existsAfer" => Some(FirebaseType::Boolean),
+    "debug" => Some(FirebaseType::Boolean),
+    _ => None,
   }
 }
 
-pub fn infer_types<'a>(firestore_tree: &'a mut FirestoreTree) {
-  if let None = firestore_tree.body() {
-    return;
-  }
-
-  let mut_top_level_members: Vec<&mut ExprNode> =
-    bfs_mut_find_top_level_members(firestore_tree.mut_body().unwrap());
-
-  for member in mut_top_level_members {
-    // TODO
+pub fn namespace_reserved_variable<'b>(name: &str) -> Option<FirebaseType> {
+  match name {
+    "duration" => Some(FirebaseType::duration_module),
+    "hashing" => Some(FirebaseType::hashing_module),
+    "latlng" => Some(FirebaseType::latlng_module),
+    "math" => Some(FirebaseType::math_module),
+    "timestamp" => Some(FirebaseType::timestamp_module),
+    "request" => Some(FirebaseType::Request),
+    "resource" => Some(FirebaseType::Resource),
+    _ => None,
   }
 }
 
-fn bfs_mut_find_top_level_members<'a>(nestable: &'a mut dyn HasChildren<'a>) -> Vec<&mut ExprNode> {
-  let bm = nestable.to_mut_base_model();
+pub fn infer_function_type<'a>(obj_type: FirebaseType, fun_name: &'a str) -> Option<FirebaseType> {
+  obj_type
+    .methods()
+    .iter()
+    .find(|f| f.0 == fun_name)
+    .and_then(|to| Some(to.1))
+}
 
-  if let MutBaseModel::ExprNode(node) = bm {
-    match node.expr() {
-      Expr::Member(_, __) => return vec![node],
-      _ => {
-        let mut child_hits = vec![];
-
-        for child in node.mut_children() {
-          child_hits.append(&mut bfs_mut_find_top_level_members(child));
-        }
-
-        return child_hits;
-      }
-    }
-  }
-
-  let mut child_hits = vec![];
-
-  for child in bm.mut_model().mut_children() {
-    child_hits.append(&mut bfs_mut_find_top_level_members(child));
-  }
-
-  child_hits
+pub fn infer_variable_type<'a>(obj_type: FirebaseType, var_name: &'a str) -> Option<FirebaseType> {
+  obj_type
+    .properties()
+    .iter()
+    .find(|f| f.0 == var_name)
+    .and_then(|to| Some(to.1))
 }
