@@ -62,11 +62,7 @@ module.exports = grammar({
 
     function_argument: ($) => choice($.path, $.expr),
 
-    namespace_reserved_function: (_) =>
-      choice("get", "getAfter", "exists", "existsAfter", "debug"),
-
-    function_calling_name: ($) =>
-      choice($.namespace_reserved_function, $.identifier),
+    function_calling_name: ($) => $.identifier,
 
     function_call: ($) =>
       prec.left(
@@ -81,19 +77,7 @@ module.exports = grammar({
         )
       ),
 
-    namespace_reserved_variable: (_) =>
-      choice(
-        // TODO special handling for modules
-        "duration",
-        "hashing",
-        "latlng",
-        "math",
-        "timestamp",
-        "request",
-        "resource"
-      ),
-
-    variable: ($) => choice($.namespace_reserved_variable, $.identifier),
+    variable: ($) => $.identifier,
 
     expr_group: ($) => seq("(", $.expr, ")"),
 

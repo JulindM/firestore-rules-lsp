@@ -289,43 +289,9 @@
         }
       ]
     },
-    "namespace_reserved_function": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "get"
-        },
-        {
-          "type": "STRING",
-          "value": "getAfter"
-        },
-        {
-          "type": "STRING",
-          "value": "exists"
-        },
-        {
-          "type": "STRING",
-          "value": "existsAfter"
-        },
-        {
-          "type": "STRING",
-          "value": "debug"
-        }
-      ]
-    },
     "function_calling_name": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "namespace_reserved_function"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "identifier"
-        }
-      ]
+      "type": "SYMBOL",
+      "name": "identifier"
     },
     "function_call": {
       "type": "PREC_LEFT",
@@ -384,51 +350,9 @@
         ]
       }
     },
-    "namespace_reserved_variable": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "duration"
-        },
-        {
-          "type": "STRING",
-          "value": "hashing"
-        },
-        {
-          "type": "STRING",
-          "value": "latlng"
-        },
-        {
-          "type": "STRING",
-          "value": "math"
-        },
-        {
-          "type": "STRING",
-          "value": "timestamp"
-        },
-        {
-          "type": "STRING",
-          "value": "request"
-        },
-        {
-          "type": "STRING",
-          "value": "resource"
-        }
-      ]
-    },
     "variable": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "namespace_reserved_variable"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "identifier"
-        }
-      ]
+      "type": "SYMBOL",
+      "name": "identifier"
     },
     "expr_group": {
       "type": "SEQ",
@@ -1328,5 +1252,6 @@
   "precedences": [],
   "externals": [],
   "inline": [],
-  "supertypes": []
+  "supertypes": [],
+  "reserved": {}
 }

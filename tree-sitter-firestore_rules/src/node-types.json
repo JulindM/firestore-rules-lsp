@@ -224,10 +224,6 @@
         {
           "type": "identifier",
           "named": true
-        },
-        {
-          "type": "namespace_reserved_function",
-          "named": true
         }
       ]
     }
@@ -475,16 +471,6 @@
     }
   },
   {
-    "type": "namespace_reserved_function",
-    "named": true,
-    "fields": {}
-  },
-  {
-    "type": "namespace_reserved_variable",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "param_list",
     "named": true,
     "fields": {},
@@ -730,10 +716,6 @@
         {
           "type": "identifier",
           "named": true
-        },
-        {
-          "type": "namespace_reserved_variable",
-          "named": true
         }
       ]
     }
@@ -879,14 +861,11 @@
   },
   {
     "type": "comment",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "create",
-    "named": false
-  },
-  {
-    "type": "debug",
     "named": false
   },
   {
@@ -894,20 +873,8 @@
     "named": false
   },
   {
-    "type": "duration",
-    "named": false
-  },
-  {
     "type": "escape_sequence",
     "named": true
-  },
-  {
-    "type": "exists",
-    "named": false
-  },
-  {
-    "type": "existsAfter",
-    "named": false
   },
   {
     "type": "false",
@@ -926,14 +893,6 @@
     "named": false
   },
   {
-    "type": "getAfter",
-    "named": false
-  },
-  {
-    "type": "hashing",
-    "named": false
-  },
-  {
     "type": "identifier",
     "named": true
   },
@@ -946,10 +905,6 @@
     "named": false
   },
   {
-    "type": "latlng",
-    "named": false
-  },
-  {
     "type": "let",
     "named": false
   },
@@ -959,10 +914,6 @@
   },
   {
     "type": "match",
-    "named": false
-  },
-  {
-    "type": "math",
     "named": false
   },
   {
@@ -979,14 +930,6 @@
   },
   {
     "type": "read",
-    "named": false
-  },
-  {
-    "type": "request",
-    "named": false
-  },
-  {
-    "type": "resource",
     "named": false
   },
   {
@@ -1008,10 +951,6 @@
   {
     "type": "string_fragment",
     "named": true
-  },
-  {
-    "type": "timestamp",
-    "named": false
   },
   {
     "type": "true",
