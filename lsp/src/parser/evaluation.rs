@@ -399,7 +399,11 @@ fn parse_variable<'b>(
   }
 }
 
-fn parse_indexing<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
+fn parse_indexing<'b>(
+  node: Node<'b>,
+  source_bytes: &[u8],
+  parent_type: Option<FirebaseType>,
+) -> Option<ExprNode> {
   let children: Vec<Node<'b>> = sanitized_children!(node).collect();
 
   if children.len() != 4 {
@@ -409,8 +413,8 @@ fn parse_indexing<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
   let object_node = &children[0];
 
   let object = match object_node.kind() {
-    "variable" => parse_variable(*object_node, source_bytes, None),
-    "function_call" => parse_function_call(*object_node, source_bytes, None),
+    "variable" => parse_variable(*object_node, source_bytes, parent_type),
+    "function_call" => parse_function_call(*object_node, source_bytes, parent_type),
     "list" => parse_list(*object_node, source_bytes),
     "expr_group" => parse_expr(object_node.child(1).unwrap(), source_bytes),
     _ => None,
@@ -443,7 +447,7 @@ fn parse_expr<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
     }
     "unary" => parse_unary(child, source_bytes),
     "member" => parse_member(child, source_bytes, None),
-    "indexing" => parse_indexing(child, source_bytes),
+    "indexing" => parse_indexing(child, source_bytes, None),
     "primary" => parse_primary(child, source_bytes, None),
     "function_call" => parse_function_call(child, source_bytes, None),
     "variable" => parse_variable(child, source_bytes, None),
@@ -526,7 +530,7 @@ fn parse_member_field<'b>(
   let field = match field_node.kind() {
     "variable" => parse_variable(*field_node, source_bytes, parent_type),
     "function_call" => parse_function_call(*field_node, source_bytes, parent_type),
-    "field_indexing" => parse_indexing(*field_node, source_bytes),
+    "field_indexing" => parse_indexing(*field_node, source_bytes, parent_type),
     "member" => parse_member(*field_node, source_bytes, parent_type),
     _ => None,
   };

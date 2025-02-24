@@ -3,7 +3,7 @@ use lsp_types::notification::*;
 use lsp_types::*;
 use request::*;
 
-use std::{collections::HashMap, error::Error};
+use std::{collections::HashMap, error::Error, thread::sleep, time::Duration};
 use tree_sitter::{Parser, Tree};
 
 use crate::{
