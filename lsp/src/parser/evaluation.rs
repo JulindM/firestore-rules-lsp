@@ -202,6 +202,7 @@ fn parse_primary<'b>(
     "expr_group" => parse_expr(child.child(1).unwrap(), source_bytes),
     "function_call" => parse_function_call(child, source_bytes, parent_type),
     "list" => parse_list(child, source_bytes),
+    "map" => parse_map(child, source_bytes),
     _ => None,
   }
 }
@@ -222,6 +223,42 @@ fn parse_list<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
   }
 
   Some(ExprNode::new(Expr::List(list_elements.clone()), node))
+}
+
+fn parse_map<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
+  let mut map_entries = vec![];
+
+  for child in sanitized_children!(node) {
+    match child.kind() {
+      "map_entry" => {
+        let entry = parse_map_entry(child, source_bytes);
+        if entry.is_some() {
+          map_entries.push(entry.unwrap());
+        }
+      }
+      _ => continue,
+    }
+  }
+
+  Some(ExprNode::new(Expr::Map(map_entries.clone()), node))
+}
+
+fn parse_map_entry<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
+  let mut key = None;
+  let mut value = None;
+
+  for child in sanitized_children!(node) {
+    match child.kind() {
+      "map_key" => key = parse_expr(child, source_bytes),
+      "map_value" => value = parse_expr(child, source_bytes),
+      _ => continue,
+    }
+  }
+
+  Some(ExprNode::new(
+    Expr::MapEntry(key.map(Box::new), value.map(Box::new)),
+    node,
+  ))
 }
 
 fn parse_function_call<'b>(
@@ -415,8 +452,9 @@ fn parse_indexing<'b>(
   let object = match object_node.kind() {
     "variable" => parse_variable(*object_node, source_bytes, parent_type),
     "function_call" => parse_function_call(*object_node, source_bytes, parent_type),
-    "list" => parse_list(*object_node, source_bytes),
     "expr_group" => parse_expr(object_node.child(1).unwrap(), source_bytes),
+    "list" => parse_list(*object_node, source_bytes),
+    "map" => parse_map(*object_node, source_bytes),
     _ => None,
   };
 
@@ -449,8 +487,6 @@ fn parse_expr<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
     "member" => parse_member(child, source_bytes, None),
     "indexing" => parse_indexing(child, source_bytes, None),
     "primary" => parse_primary(child, source_bytes, None),
-    "function_call" => parse_function_call(child, source_bytes, None),
-    "variable" => parse_variable(child, source_bytes, None),
     _ => None,
   };
 }

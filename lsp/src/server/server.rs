@@ -3,7 +3,7 @@ use lsp_types::notification::*;
 use lsp_types::*;
 use request::*;
 
-use std::{collections::HashMap, error::Error, thread::sleep, time::Duration};
+use std::{collections::HashMap, error::Error};
 use tree_sitter::{Parser, Tree};
 
 use crate::{
@@ -105,10 +105,7 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
           continue;
         }
       }
-      Message::Response(resp) => {
-        eprintln!("got response: {resp:?}");
-        continue;
-      }
+      Message::Response(_) => continue,
       Message::Notification(not) => {
         if let Ok(did_open) = cast_notif::<DidOpenTextDocument>(&not) {
           open_doc(&did_open, parser, &mut evaulated_trees);
@@ -303,7 +300,7 @@ fn handle_hover<'a>(
 
   let traversal: String = traversal_list
     .into_iter()
-    .map(|v| v.as_ref().to_owned())
+    .map(|v| v.to_string().to_owned())
     .collect::<Vec<String>>()
     .join("->");
 

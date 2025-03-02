@@ -1,6 +1,6 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
-use strum::AsRefStr;
+use strum::{AsRefStr, Display};
 use tree_sitter::{Node, Point};
 
 use super::types::FirebaseType;
@@ -49,7 +49,7 @@ pub trait ToBaseModel: Contains {
   fn to_mut_base_model<'a>(&'a mut self) -> MutBaseModel<'a>;
 }
 
-#[derive(Clone, AsRefStr)]
+#[derive(Clone, Display)]
 pub enum BaseModel<'a> {
   Function(&'a Function),
   FunctionBody(&'a FunctionBody),
@@ -59,6 +59,7 @@ pub enum BaseModel<'a> {
   Match(&'a Match),
   MatchBody(&'a MatchBody),
   ServiceBody(&'a ServiceBody),
+  #[strum(to_string = "{0}")]
   ExprNode(&'a ExprNode),
   Identifier(&'a Identifier),
   Literal(&'a Literal),
@@ -76,6 +77,7 @@ pub enum MutBaseModel<'a> {
   Match(&'a mut Match),
   MatchBody(&'a mut MatchBody),
   ServiceBody(&'a mut ServiceBody),
+  #[strum(to_string = "{0}")]
   ExprNode(&'a mut ExprNode),
   Identifier(&'a mut Identifier),
   Literal(&'a mut Literal),
@@ -156,7 +158,7 @@ impl Contains for (Point, Point) {
 
     if self.0.row < self.1.row {
       // Mutliline spanning block
-      if p.row > self.0.row || p.row < self.1.row {
+      if p.row > self.0.row && p.row < self.1.row {
         // p in (start line, end line)
         return true;
       }
@@ -167,7 +169,7 @@ impl Contains for (Point, Point) {
       }
 
       // p in end line
-      return p.column < self.1.column;
+      return p.column <= self.1.column;
     } else {
       // Oneline spanning
       return self.0.column <= p.column && p.column <= self.1.column;
@@ -886,6 +888,8 @@ pub enum Expr {
   Literal(Literal),
   Variable(DefinableIdentifier, FirebaseType),
   List(Vec<ExprNode>),
+  Map(Vec<ExprNode>),
+  MapEntry(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
 }
 
 #[derive(Clone)]
@@ -895,9 +899,18 @@ pub struct ExprNode {
   end: Point,
 }
 
+impl Display for ExprNode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(self.expr.as_ref())
+  }
+}
+
 impl Debug for ExprNode {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct(&self.expr.as_ref()).finish()
+    f.debug_struct(&self.expr.as_ref())
+      .field("start", &self.start)
+      .field("end", &self.end)
+      .finish()
   }
 }
 
@@ -923,7 +936,12 @@ impl ExprNode {
       Expr::Literal(literal) => literal.firebase_type(),
       Expr::Variable(_, fir_type) => Some(fir_type),
       Expr::List(_) => Some(&FirebaseType::List),
-      _ => None,
+      Expr::Unary(_, _) => None,
+      Expr::Binary(_, _, _) => None,
+      Expr::Ternary(_, _, _) => None,
+      Expr::Indexing(_, _) => None,
+      Expr::Map(_) => Some(&FirebaseType::Map),
+      Expr::MapEntry(_, _) => None,
     }
   }
 
@@ -961,13 +979,14 @@ impl<'a> HasChildren<'a> for ExprNode {
       }
       Expr::MemberObject(expr_node) => resolve_expr_nest(vec![expr_node]),
       Expr::MemberField(expr_node) => resolve_expr_nest(vec![expr_node]),
-      Expr::List(expr_nodes) => {
+      Expr::List(expr_nodes) | Expr::Map(expr_nodes) => {
         let mut res: Vec<&dyn HasChildren<'a>> = vec![];
         expr_nodes.iter().for_each(|n| res.push(n));
         res
       }
       Expr::Literal(_) => vec![],
       Expr::Variable(_, _) => vec![],
+      Expr::MapEntry(key, value) => resolve_expr_nest(vec![key, value]),
     }
   }
 
@@ -995,13 +1014,14 @@ impl<'a> HasChildren<'a> for ExprNode {
       }
       Expr::MemberObject(expr_node) => mut_resolve_expr_nest(vec![expr_node]),
       Expr::MemberField(expr_node) => mut_resolve_expr_nest(vec![expr_node]),
-      Expr::List(expr_nodes) => {
+      Expr::List(expr_nodes) | Expr::Map(expr_nodes) => {
         let mut res: Vec<&mut dyn HasChildren<'a>> = vec![];
         expr_nodes.iter_mut().for_each(|n| res.push(n));
         res
       }
       Expr::Literal(_) => vec![],
       Expr::Variable(_, _) => vec![],
+      Expr::MapEntry(key, value) => mut_resolve_expr_nest(vec![key, value]),
     }
   }
 }
