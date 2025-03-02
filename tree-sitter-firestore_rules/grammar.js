@@ -185,7 +185,7 @@ module.exports = grammar({
         $.function_body
       ),
 
-    collection_path_seg: (_) => /\/[_a-zA-Z][_a-zA-Z0-9]*/,
+    collection_path_seg: (_) => /\/[_a-zA-Z0-9][_a-zA-Z0-9\-]*/,
     single_path_seg: (_) => /\/\{[_a-zA-Z][_a-zA-Z0-9]*\}/,
     multi_path_seg: (_) => /\/\{[_a-zA-Z][_a-zA-Z0-9]*=\*\*\}/,
 

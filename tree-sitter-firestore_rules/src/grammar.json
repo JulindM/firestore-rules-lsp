@@ -1100,7 +1100,7 @@
     },
     "collection_path_seg": {
       "type": "PATTERN",
-      "value": "\\/[_a-zA-Z][_a-zA-Z0-9]*"
+      "value": "\\/[_a-zA-Z0-9][_a-zA-Z0-9\\-]*"
     },
     "single_path_seg": {
       "type": "PATTERN",
