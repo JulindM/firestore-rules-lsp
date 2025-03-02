@@ -272,11 +272,11 @@
           "named": true
         },
         {
-          "type": "range",
+          "type": "map",
           "named": true
         },
         {
-          "type": "string",
+          "type": "range",
           "named": true
         },
         {
@@ -319,6 +319,128 @@
         },
         {
           "type": "string",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "map",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "map_entry",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "map_entry",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "map_key",
+    "named": false,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "addition",
+          "named": true
+        },
+        {
+          "type": "conditional_and",
+          "named": true
+        },
+        {
+          "type": "conditional_or",
+          "named": true
+        },
+        {
+          "type": "indexing",
+          "named": true
+        },
+        {
+          "type": "member",
+          "named": true
+        },
+        {
+          "type": "multiplication",
+          "named": true
+        },
+        {
+          "type": "primary",
+          "named": true
+        },
+        {
+          "type": "relation",
+          "named": true
+        },
+        {
+          "type": "ternary",
+          "named": true
+        },
+        {
+          "type": "unary",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "map_value",
+    "named": false,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "addition",
+          "named": true
+        },
+        {
+          "type": "conditional_and",
+          "named": true
+        },
+        {
+          "type": "conditional_or",
+          "named": true
+        },
+        {
+          "type": "indexing",
+          "named": true
+        },
+        {
+          "type": "member",
+          "named": true
+        },
+        {
+          "type": "multiplication",
+          "named": true
+        },
+        {
+          "type": "primary",
+          "named": true
+        },
+        {
+          "type": "relation",
+          "named": true
+        },
+        {
+          "type": "ternary",
+          "named": true
+        },
+        {
+          "type": "unary",
           "named": true
         }
       ]
@@ -541,6 +663,10 @@
         },
         {
           "type": "literal",
+          "named": true
+        },
+        {
+          "type": "map",
           "named": true
         },
         {

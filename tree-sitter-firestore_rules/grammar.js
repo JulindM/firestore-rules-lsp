@@ -83,8 +83,21 @@ module.exports = grammar({
 
     list: ($) => seq("[", optional(seq($.expr, repeat(seq(",", $.expr)))), "]"),
 
+    map_entry: ($) =>
+      seq(alias($.expr, "map_key"), ":", alias($.expr, "map_value")),
+
+    map: ($) =>
+      seq("{", optional(seq($.map_entry, repeat(seq(",", $.map_entry)))), "}"),
+
     primary: ($) =>
-      choice($.literal, $.variable, $.expr_group, $.list, $.function_call),
+      choice(
+        $.literal,
+        $.variable,
+        $.function_call,
+        $.expr_group,
+        $.list,
+        $.map
+      ),
 
     range: (_) => seq(/\d+/, ":", "/d+/"),
 
@@ -92,10 +105,7 @@ module.exports = grammar({
       prec.left(
         8,
         seq(
-          choice(
-            choice($.string, $.variable, $.expr_group, $.function_call),
-            $.list
-          ),
+          choice($.variable, $.expr_group, $.function_call, $.list, $.map),
           "[",
           choice($.expr, $.range),
           "]"
