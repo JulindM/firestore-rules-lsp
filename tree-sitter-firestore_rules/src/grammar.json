@@ -234,48 +234,6 @@
         ]
       }
     },
-    "path_segment": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "identifier"
-        },
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "$("
-            },
-            {
-              "type": "SYMBOL",
-              "name": "expr"
-            },
-            {
-              "type": "STRING",
-              "value": ")"
-            }
-          ]
-        }
-      ]
-    },
-    "path": {
-      "type": "REPEAT1",
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "STRING",
-            "value": "/"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "path_segment"
-          }
-        ]
-      }
-    },
     "function_argument": {
       "type": "CHOICE",
       "members": [
@@ -1098,17 +1056,107 @@
         }
       ]
     },
-    "collection_path_seg": {
+    "path": {
+      "type": "REPEAT1",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "/"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "path_segment"
+          }
+        ]
+      }
+    },
+    "path_segment": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "path_part"
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "$("
+            },
+            {
+              "type": "SYMBOL",
+              "name": "expr"
+            },
+            {
+              "type": "STRING",
+              "value": ")"
+            }
+          ]
+        }
+      ]
+    },
+    "path_part": {
       "type": "PATTERN",
-      "value": "\\/[_a-zA-Z0-9][_a-zA-Z0-9\\-]*"
+      "value": "[_a-zA-Z0-9][_a-zA-Z0-9\\-]*"
+    },
+    "collection_path_seg": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "/"
+        },
+        {
+          "type": "IMMEDIATE_TOKEN",
+          "content": {
+            "type": "PATTERN",
+            "value": "[_a-zA-Z0-9][_a-zA-Z0-9\\-]*"
+          }
+        }
+      ]
     },
     "single_path_seg": {
-      "type": "PATTERN",
-      "value": "\\/\\{[_a-zA-Z][_a-zA-Z0-9]*\\}"
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "/{"
+        },
+        {
+          "type": "IMMEDIATE_TOKEN",
+          "content": {
+            "type": "PATTERN",
+            "value": "[_a-zA-Z][_a-zA-Z0-9]*"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
     },
     "multi_path_seg": {
-      "type": "PATTERN",
-      "value": "\\/\\{[_a-zA-Z][_a-zA-Z0-9]*=\\*\\*\\}"
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "/{"
+        },
+        {
+          "type": "IMMEDIATE_TOKEN",
+          "content": {
+            "type": "PATTERN",
+            "value": "[_a-zA-Z][_a-zA-Z0-9]*"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "=**}"
+        }
+      ]
     },
     "match_path": {
       "type": "REPEAT1",

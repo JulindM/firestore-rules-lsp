@@ -56,10 +56,6 @@ module.exports = grammar({
     escape_sequence: (_) =>
       token.immediate(seq("\\", choice("\\", "?", '"', "'", "`"))),
 
-    path_segment: ($) => choice($.identifier, seq("$(", $.expr, ")")),
-
-    path: ($) => repeat1(seq("/", $.path_segment)),
-
     function_argument: ($) => choice($.path, $.expr),
 
     function_calling_name: ($) => $.identifier,
@@ -185,9 +181,23 @@ module.exports = grammar({
         $.function_body
       ),
 
-    collection_path_seg: (_) => /\/[_a-zA-Z0-9][_a-zA-Z0-9\-]*/,
-    single_path_seg: (_) => /\/\{[_a-zA-Z][_a-zA-Z0-9]*\}/,
-    multi_path_seg: (_) => /\/\{[_a-zA-Z][_a-zA-Z0-9]*=\*\*\}/,
+    path: ($) => repeat1(seq("/", $.path_segment)),
+
+    path_segment: ($) => choice($.path_part, seq("$(", $.expr, ")")),
+
+    path_part: ($) => /[_a-zA-Z0-9][_a-zA-Z0-9\-]*/,
+
+    // path part matching
+    collection_path_seg: ($) =>
+      seq("/", token.immediate(/[_a-zA-Z0-9][_a-zA-Z0-9\-]*/)),
+
+    //identifier matching
+    single_path_seg: (_) =>
+      seq("/{", token.immediate(/[_a-zA-Z][_a-zA-Z0-9]*/), "}"),
+
+    // identifier matching
+    multi_path_seg: (_) =>
+      seq("/{", token.immediate(/[_a-zA-Z][_a-zA-Z0-9]*/), "=**}"),
 
     match_path: ($) =>
       repeat1(

@@ -15,6 +15,11 @@
     }
   },
   {
+    "type": "collection_path_seg",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "conditional_and",
     "named": true,
     "fields": {},
@@ -578,6 +583,11 @@
     "fields": {}
   },
   {
+    "type": "multi_path_seg",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "multiplication",
     "named": true,
     "fields": {},
@@ -635,7 +645,7 @@
           "named": true
         },
         {
-          "type": "identifier",
+          "type": "path_part",
           "named": true
         }
       ]
@@ -755,6 +765,11 @@
   },
   {
     "type": "service_name",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "single_path_seg",
     "named": true,
     "fields": {}
   },
@@ -930,6 +945,10 @@
     "named": false
   },
   {
+    "type": "/{",
+    "named": false
+  },
+  {
     "type": ":",
     "named": false
   },
@@ -947,6 +966,10 @@
   },
   {
     "type": "=",
+    "named": false
+  },
+  {
+    "type": "=**}",
     "named": false
   },
   {
@@ -980,10 +1003,6 @@
   {
     "type": "cloud.firestore",
     "named": false
-  },
-  {
-    "type": "collection_path_seg",
-    "named": true
   },
   {
     "type": "comment",
@@ -1043,15 +1062,15 @@
     "named": false
   },
   {
-    "type": "multi_path_seg",
-    "named": true
-  },
-  {
     "type": "null",
     "named": true
   },
   {
     "type": "number",
+    "named": true
+  },
+  {
+    "type": "path_part",
     "named": true
   },
   {
@@ -1069,10 +1088,6 @@
   {
     "type": "service",
     "named": false
-  },
-  {
-    "type": "single_path_seg",
-    "named": true
   },
   {
     "type": "string_fragment",
