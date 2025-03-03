@@ -793,18 +793,6 @@ impl<'a> HasChildren<'a> for Rule {
 }
 
 #[derive(Debug, Clone)]
-pub enum PathSegment {
-  String(Identifier),
-  EvalPath(ExprNode),
-}
-
-#[derive(Debug, Clone)]
-pub enum FunctionArgument {
-  Path(Vec<PathSegment>),
-  Expr(ExprNode),
-}
-
-#[derive(Debug, Clone)]
 pub struct Literal {
   start: Point,
   end: Point,
@@ -884,12 +872,14 @@ pub enum Expr {
   MemberObject(Option<Box<ExprNode>>),
   MemberField(Option<Box<ExprNode>>),
   Indexing(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
-  FunctionCall(DefinableIdentifier, Vec<FunctionArgument>, FirebaseType),
+  FunctionCall(DefinableIdentifier, Vec<ExprNode>, FirebaseType),
   Literal(Literal),
+  Path(Vec<ExprNode>),
   Variable(DefinableIdentifier, FirebaseType),
   List(Vec<ExprNode>),
   Map(Vec<ExprNode>),
   MapEntry(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
+  ExprGroup(Option<Box<ExprNode>>),
 }
 
 #[derive(Clone)]
@@ -942,6 +932,8 @@ impl ExprNode {
       Expr::Indexing(_, _) => None,
       Expr::Map(_) => Some(&FirebaseType::Map),
       Expr::MapEntry(_, _) => None,
+      Expr::Path(_) => Some(&FirebaseType::Path),
+      Expr::ExprGroup(expr) => expr.as_ref().and_then(|e| e.inferred_type()),
     }
   }
 
@@ -964,29 +956,24 @@ impl<'a> HasChildren<'a> for ExprNode {
       }
       Expr::Member(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::Indexing(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
-      Expr::FunctionCall(_, function_arguments, _) => {
-        let mut res: Vec<&dyn HasChildren<'a>> = vec![];
-
-        function_arguments.iter().for_each(|arg| match arg {
-          FunctionArgument::Path(path_segs) => path_segs.iter().for_each(|ps| match ps {
-            PathSegment::String(identifier) => res.push(identifier),
-            PathSegment::EvalPath(expr_node) => res.push(expr_node),
-          }),
-          FunctionArgument::Expr(expr_node) => res.push(expr_node),
-        });
-
-        res
-      }
+      Expr::FunctionCall(_, function_arguments, _) => function_arguments
+        .iter()
+        .map(|e| e as &dyn HasChildren<'a>)
+        .collect(),
       Expr::MemberObject(expr_node) => resolve_expr_nest(vec![expr_node]),
       Expr::MemberField(expr_node) => resolve_expr_nest(vec![expr_node]),
-      Expr::List(expr_nodes) | Expr::Map(expr_nodes) => {
-        let mut res: Vec<&dyn HasChildren<'a>> = vec![];
-        expr_nodes.iter().for_each(|n| res.push(n));
-        res
-      }
+      Expr::List(expr_nodes) | Expr::Map(expr_nodes) => expr_nodes
+        .iter()
+        .map(|e| e as &dyn HasChildren<'a>)
+        .collect(),
       Expr::Literal(_) => vec![],
       Expr::Variable(_, _) => vec![],
       Expr::MapEntry(key, value) => resolve_expr_nest(vec![key, value]),
+      Expr::Path(path_segments) => path_segments
+        .iter()
+        .map(|n| n as &dyn HasChildren<'a>)
+        .collect(),
+      Expr::ExprGroup(expr_node) => resolve_expr_nest(vec![expr_node]),
     }
   }
 
@@ -999,29 +986,24 @@ impl<'a> HasChildren<'a> for ExprNode {
       }
       Expr::Member(expr_node, expr_node1) => mut_resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::Indexing(expr_node, expr_node1) => mut_resolve_expr_nest(vec![expr_node, expr_node1]),
-      Expr::FunctionCall(_, function_arguments, _) => {
-        let mut res: Vec<&mut dyn HasChildren<'a>> = vec![];
-
-        function_arguments.iter_mut().for_each(|arg| match arg {
-          FunctionArgument::Path(path_segs) => path_segs.iter_mut().for_each(|ps| match ps {
-            PathSegment::String(identifier) => res.push(identifier),
-            PathSegment::EvalPath(expr_node) => res.push(expr_node),
-          }),
-          FunctionArgument::Expr(expr_node) => res.push(expr_node),
-        });
-
-        res
-      }
+      Expr::FunctionCall(_, function_arguments, _) => function_arguments
+        .iter_mut()
+        .map(|e| e as &mut dyn HasChildren<'a>)
+        .collect(),
       Expr::MemberObject(expr_node) => mut_resolve_expr_nest(vec![expr_node]),
       Expr::MemberField(expr_node) => mut_resolve_expr_nest(vec![expr_node]),
-      Expr::List(expr_nodes) | Expr::Map(expr_nodes) => {
-        let mut res: Vec<&mut dyn HasChildren<'a>> = vec![];
-        expr_nodes.iter_mut().for_each(|n| res.push(n));
-        res
-      }
+      Expr::List(expr_nodes) | Expr::Map(expr_nodes) => expr_nodes
+        .iter_mut()
+        .map(|e| e as &mut dyn HasChildren<'a>)
+        .collect(),
       Expr::Literal(_) => vec![],
       Expr::Variable(_, _) => vec![],
       Expr::MapEntry(key, value) => mut_resolve_expr_nest(vec![key, value]),
+      Expr::Path(path_segments) => path_segments
+        .iter_mut()
+        .map(|n| n as &mut dyn HasChildren<'a>)
+        .collect(),
+      Expr::ExprGroup(expr_node) => mut_resolve_expr_nest(vec![expr_node]),
     }
   }
 }

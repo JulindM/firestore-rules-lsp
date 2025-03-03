@@ -247,6 +247,7 @@ impl FirebaseTypeTrait for FirebaseType {
 pub fn namespace_reserved_function<'b>(name: &str) -> Option<FirebaseType> {
   match name {
     "get" => Some(FirebaseType::Resource),
+    "path" => Some(FirebaseType::Path),
     "getAfter" => Some(FirebaseType::Resource),
     "exists" => Some(FirebaseType::Boolean),
     "existsAfer" => Some(FirebaseType::Boolean),

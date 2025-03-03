@@ -4,9 +4,9 @@ use crate::parser::base::MethodType;
 
 use super::{
   base::{
-    DefinableIdentifier, Expr, ExprNode, FirestoreTree, Function, FunctionArgument, FunctionBody,
-    Identifier, Literal, Match, MatchBody, MatchPath, MatchPathPart, MatchPathPartType, Method,
-    Operation, PathSegment, Rule, ServiceBody, VariableDefinition,
+    DefinableIdentifier, Expr, ExprNode, FirestoreTree, Function, FunctionBody, Identifier,
+    Literal, Match, MatchBody, MatchPath, MatchPathPart, MatchPathPartType, Method, Operation,
+    Rule, ServiceBody, VariableDefinition,
   },
   types::{
     infer_function_type, infer_variable_type, namespace_reserved_function,
@@ -199,7 +199,7 @@ fn parse_primary<'b>(
   match child.kind() {
     "literal" => parse_literal(child, source_bytes),
     "variable" => parse_variable(child, source_bytes, parent_type),
-    "expr_group" => parse_expr(child.child(1).unwrap(), source_bytes),
+    "expr_group" => parse_expr_group(child, source_bytes),
     "function_call" => parse_function_call(child, source_bytes, parent_type),
     "list" => parse_list(child, source_bytes),
     "map" => parse_map(child, source_bytes),
@@ -326,16 +326,16 @@ fn parse_function_calling_name<'b>(
   }
 }
 
-fn parse_function_arg<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<FunctionArgument> {
+fn parse_function_arg<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
   for child in sanitized_children!(node) {
     match child.kind() {
       "expr" => {
         let res = parse_expr(child, source_bytes);
-        return res.and_then(|node| Some(FunctionArgument::Expr(node)));
+        return res;
       }
       "path" => {
         let res = parse_path(child, source_bytes);
-        return Some(FunctionArgument::Path(res));
+        return res;
       }
       _ => return None,
     }
@@ -344,20 +344,20 @@ fn parse_function_arg<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<Functio
   None
 }
 
-fn parse_path<'b>(node: Node<'b>, source_bytes: &[u8]) -> Vec<PathSegment> {
+fn parse_path<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
   let mut path_segments = vec![];
 
   sanitized_children!(node).for_each(|child| match child.kind() {
     "path_segment" => {
       sanitized_children!(child).for_each(|child| match child.kind() {
-        "identifier" => {
-          let name = child.utf8_text(source_bytes).unwrap();
-          path_segments.push(PathSegment::String(Identifier::new(name, child)))
-        }
-        "expr" => {
-          let expr = parse_expr(child, source_bytes);
+        "path_part" => path_segments.push(ExprNode::new(
+          Expr::Literal(Literal::new(None, child)),
+          child,
+        )),
+        "expr_group" => {
+          let expr = parse_expr_group(child, source_bytes);
           if expr.is_some() {
-            path_segments.push(PathSegment::EvalPath(expr.unwrap()));
+            path_segments.push(expr.unwrap());
           }
         }
         _ => return,
@@ -366,7 +366,7 @@ fn parse_path<'b>(node: Node<'b>, source_bytes: &[u8]) -> Vec<PathSegment> {
     _ => return,
   });
 
-  path_segments
+  Some(ExprNode::new(Expr::Path(path_segments), node))
 }
 
 fn parse_literal<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
@@ -452,7 +452,7 @@ fn parse_indexing<'b>(
   let object = match object_node.kind() {
     "variable" => parse_variable(*object_node, source_bytes, parent_type),
     "function_call" => parse_function_call(*object_node, source_bytes, parent_type),
-    "expr_group" => parse_expr(object_node.child(1).unwrap(), source_bytes),
+    "expr_group" => parse_expr_group(*object_node, source_bytes),
     "list" => parse_list(*object_node, source_bytes),
     "map" => parse_map(*object_node, source_bytes),
     _ => None,
@@ -489,6 +489,24 @@ fn parse_expr<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
     "primary" => parse_primary(child, source_bytes, None),
     _ => None,
   };
+}
+
+fn parse_expr_group<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
+  let children: Vec<Node<'b>> = sanitized_children!(node).collect();
+
+  if children.len() != 3 {
+    return None;
+  }
+
+  let child = children[1];
+
+  let expr = match child.kind() {
+    "expr" => parse_expr(child, source_bytes),
+    "path" => parse_path(child, source_bytes),
+    _ => None,
+  };
+
+  return Some(ExprNode::new(Expr::ExprGroup(expr.map(Box::new)), node));
 }
 
 fn parse_member<'b>(

@@ -320,8 +320,17 @@
           "value": "("
         },
         {
-          "type": "SYMBOL",
-          "name": "expr"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "expr"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "path"
+            }
+          ]
         },
         {
           "type": "STRING",
@@ -923,6 +932,48 @@
         }
       ]
     },
+    "path": {
+      "type": "REPEAT1",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "/"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "path_segment"
+          }
+        ]
+      }
+    },
+    "path_segment": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "path_part"
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "$"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "expr_group"
+            }
+          ]
+        }
+      ]
+    },
+    "path_part": {
+      "type": "PATTERN",
+      "value": "[_a-zA-Z0-9][_a-zA-Z0-9\\-]*"
+    },
     "variable_def": {
       "type": "SEQ",
       "members": [
@@ -1055,52 +1106,6 @@
           "name": "function_body"
         }
       ]
-    },
-    "path": {
-      "type": "REPEAT1",
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "STRING",
-            "value": "/"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "path_segment"
-          }
-        ]
-      }
-    },
-    "path_segment": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "path_part"
-        },
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "$("
-            },
-            {
-              "type": "SYMBOL",
-              "name": "expr"
-            },
-            {
-              "type": "STRING",
-              "value": ")"
-            }
-          ]
-        }
-      ]
-    },
-    "path_part": {
-      "type": "PATTERN",
-      "value": "[_a-zA-Z0-9][_a-zA-Z0-9\\-]*"
     },
     "collection_path_seg": {
       "type": "SEQ",

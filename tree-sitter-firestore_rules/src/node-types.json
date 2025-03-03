@@ -111,6 +111,10 @@
         {
           "type": "expr",
           "named": true
+        },
+        {
+          "type": "path",
+          "named": true
         }
       ]
     }
@@ -641,7 +645,7 @@
       "required": true,
       "types": [
         {
-          "type": "expr",
+          "type": "expr_group",
           "named": true
         },
         {
@@ -893,7 +897,7 @@
     "named": false
   },
   {
-    "type": "$(",
+    "type": "$",
     "named": false
   },
   {
