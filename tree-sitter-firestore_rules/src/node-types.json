@@ -94,6 +94,10 @@
           "named": true
         },
         {
+          "type": "type_comparison",
+          "named": true
+        },
+        {
           "type": "unary",
           "named": true
         }
@@ -398,6 +402,10 @@
           "named": true
         },
         {
+          "type": "type_comparison",
+          "named": true
+        },
+        {
           "type": "unary",
           "named": true
         }
@@ -446,6 +454,10 @@
         },
         {
           "type": "ternary",
+          "named": true
+        },
+        {
+          "type": "type_comparison",
           "named": true
         },
         {
@@ -836,6 +848,30 @@
     }
   },
   {
+    "type": "type",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "type_comparison",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "expr",
+          "named": true
+        },
+        {
+          "type": "type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "unary",
     "named": true,
     "fields": {},
@@ -1005,6 +1041,10 @@
     "named": false
   },
   {
+    "type": "bool",
+    "named": false
+  },
+  {
     "type": "cloud.firestore",
     "named": false
   },
@@ -1022,11 +1062,19 @@
     "named": false
   },
   {
+    "type": "duration",
+    "named": false
+  },
+  {
     "type": "escape_sequence",
     "named": true
   },
   {
     "type": "false",
+    "named": false
+  },
+  {
+    "type": "float",
     "named": false
   },
   {
@@ -1054,11 +1102,27 @@
     "named": false
   },
   {
+    "type": "int",
+    "named": false
+  },
+  {
+    "type": "is",
+    "named": false
+  },
+  {
+    "type": "latlng",
+    "named": false
+  },
+  {
     "type": "let",
     "named": false
   },
   {
     "type": "list",
+    "named": false
+  },
+  {
+    "type": "map",
     "named": false
   },
   {
@@ -1072,6 +1136,14 @@
   {
     "type": "number",
     "named": true
+  },
+  {
+    "type": "number",
+    "named": false
+  },
+  {
+    "type": "path",
+    "named": false
   },
   {
     "type": "path_part",
@@ -1094,8 +1166,16 @@
     "named": false
   },
   {
+    "type": "string",
+    "named": false
+  },
+  {
     "type": "string_fragment",
     "named": true
+  },
+  {
+    "type": "timestamp",
+    "named": false
   },
   {
     "type": "true",

@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use tree_sitter::{Node, Tree};
 
 use crate::parser::base::MethodType;
@@ -9,7 +11,7 @@ use super::{
     Rule, ServiceBody, VariableDefinition,
   },
   types::{
-    infer_function_type, infer_variable_type, namespace_reserved_function,
+    from_type_str, infer_function_type, infer_variable_type, namespace_reserved_function,
     namespace_reserved_variable, FirebaseType,
   },
 };
@@ -222,7 +224,10 @@ fn parse_list<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
     }
   }
 
-  Some(ExprNode::new(Expr::List(list_elements.clone()), node))
+  Some(ExprNode::new(
+    Expr::List(list_elements.clone(), Cell::new(FirebaseType::List)),
+    node,
+  ))
 }
 
 fn parse_map<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
@@ -240,7 +245,10 @@ fn parse_map<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
     }
   }
 
-  Some(ExprNode::new(Expr::Map(map_entries.clone()), node))
+  Some(ExprNode::new(
+    Expr::Map(map_entries.clone(), Cell::new(FirebaseType::Map)),
+    node,
+  ))
 }
 
 fn parse_map_entry<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
@@ -268,7 +276,7 @@ fn parse_function_call<'b>(
 ) -> Option<ExprNode> {
   let mut args = vec![];
   let mut name = None;
-  let mut func_type = FirebaseType::UNKNOWN;
+  let mut func_type = FirebaseType::_UNSET;
 
   sanitized_children!(node).for_each(|child| match child.kind() {
     "function_calling_name" => {
@@ -284,7 +292,7 @@ fn parse_function_call<'b>(
   });
 
   Some(ExprNode::new(
-    Expr::FunctionCall(name.unwrap(), args, func_type),
+    Expr::FunctionCall(name.unwrap(), args, Cell::new(func_type)),
     node,
   ))
 }
@@ -297,7 +305,7 @@ fn parse_function_calling_name<'b>(
   let fnode = node.child(0);
 
   if fnode.is_none() {
-    return (None, FirebaseType::UNKNOWN);
+    return (None, FirebaseType::Any);
   }
 
   let name = fnode.unwrap().utf8_text(source_bytes).unwrap();
@@ -319,10 +327,10 @@ fn parse_function_calling_name<'b>(
 
       (
         Some(definability),
-        infered_type.unwrap_or(FirebaseType::UNKNOWN),
+        infered_type.unwrap_or(FirebaseType::_UNSET),
       )
     }
-    _ => (None, FirebaseType::UNKNOWN),
+    _ => (None, FirebaseType::Any),
   }
 }
 
@@ -351,7 +359,7 @@ fn parse_path<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
     "path_segment" => {
       sanitized_children!(child).for_each(|child| match child.kind() {
         "path_part" => path_segments.push(ExprNode::new(
-          Expr::Literal(Literal::new(None, child)),
+          Expr::Literal(Literal::new(FirebaseType::Any, child)),
           child,
         )),
         "expr_group" => {
@@ -366,7 +374,10 @@ fn parse_path<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
     _ => return,
   });
 
-  Some(ExprNode::new(Expr::Path(path_segments), node))
+  Some(ExprNode::new(
+    Expr::Path(path_segments, Cell::new(FirebaseType::Path)),
+    node,
+  ))
 }
 
 fn parse_literal<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
@@ -380,19 +391,17 @@ fn parse_literal<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
 
   let literal = match child.kind() {
     "number" => Some(Literal::new(
-      Some(
-        child
-          .utf8_text(source_bytes)
-          .unwrap()
-          .parse::<f32>()
-          .map_or(FirebaseType::Integer, |_| FirebaseType::Float),
-      ),
+      child
+        .utf8_text(source_bytes)
+        .unwrap()
+        .parse::<f32>()
+        .map_or(FirebaseType::Integer, |_| FirebaseType::Float),
       child,
     )),
-    "true" => Some(Literal::new(Some(FirebaseType::Boolean), node)),
-    "false" => Some(Literal::new(Some(FirebaseType::Boolean), node)),
-    "null" => Some(Literal::new(Some(FirebaseType::Null), child)),
-    "string" => Some(Literal::new(Some(FirebaseType::String), child)),
+    "true" => Some(Literal::new(FirebaseType::Boolean, node)),
+    "false" => Some(Literal::new(FirebaseType::Boolean, node)),
+    "null" => Some(Literal::new(FirebaseType::Null, child)),
+    "string" => Some(Literal::new(FirebaseType::String, child)),
     _ => None,
   };
 
@@ -428,7 +437,10 @@ fn parse_variable<'b>(
       };
 
       Some(ExprNode::new(
-        Expr::Variable(definability, infered_type.unwrap_or(FirebaseType::UNKNOWN)),
+        Expr::Variable(
+          definability,
+          Cell::new(infered_type.unwrap_or(FirebaseType::_UNSET)),
+        ),
         node,
       ))
     }
@@ -483,6 +495,7 @@ fn parse_expr<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
     "conditional_or" | "conditional_and" | "relation" | "addition" | "multiplication" => {
       parse_binary(child, source_bytes)
     }
+    "type_comparison" => parse_type_comparison(child, source_bytes),
     "unary" => parse_unary(child, source_bytes),
     "member" => parse_member(child, source_bytes, None),
     "indexing" => parse_indexing(child, source_bytes, None),
@@ -530,11 +543,9 @@ fn parse_member<'b>(
         field_expr = parse_member_field(
           child,
           source_bytes,
-          if object_expr.is_some() {
-            object_expr.clone().unwrap().inferred_type().cloned()
-          } else {
-            None
-          },
+          object_expr
+            .clone()
+            .and_then(|o| o.inferred_type().and_then(|t| Some(t.get()))),
         )
       }
       _ => continue,
@@ -611,6 +622,24 @@ fn parse_ternary<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
     condition.map(Box::new),
     on_true.clone().map(Box::new),
     on_false.clone().map(Box::new),
+  );
+
+  Some(ExprNode::new(expr, node))
+}
+
+fn parse_type_comparison<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
+  let children: Vec<Node<'b>> = sanitized_children!(node).collect();
+
+  if children.len() != 3 {
+    return None;
+  }
+
+  let operator = parse_expr(children[0], source_bytes);
+  let type_operator = from_type_str(children[2].utf8_text(source_bytes).unwrap_or(""));
+
+  let expr = Expr::TypeComparison(
+    operator.map(Box::new),
+    Cell::new(type_operator.unwrap_or(FirebaseType::Any)),
   );
 
   Some(ExprNode::new(expr, node))

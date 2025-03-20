@@ -121,6 +121,7 @@ pub fn get_used_semantic_token_types() -> Vec<SemanticTokenType> {
     SemanticTokenType::FUNCTION, //6
     SemanticTokenType::VARIABLE, //7
     SemanticTokenType::PROPERTY, //8
+    SemanticTokenType::TYPE,     //9
   ]
 }
 
@@ -143,11 +144,14 @@ fn get_semantic_type(type_str: &str, parent_type: &str) -> Option<(u32, Option<u
       "path_segment" => Some(2),
       _ => None,
     },
-    "!" | "-" | "+" | "=" | "mult_op" | "relation_op" | "&&" | "||" | "?" | ":" => Some(4),
+    "!" | "-" | "+" | "=" | "mult_op" | "relation_op" | "&&" | "||" | "?" | ":" | "is" | "in" => {
+      Some(4)
+    }
     "false" | "true" | "null" | "let" | "return" | "function" | "method" | "create" | "update"
     | "delete" | "match" | "allow" | "if" | "service" | "cloud.firestore" => Some(5),
     "function_name" | "function_calling_name" => Some(6),
     "single_path_seg" | "multi_path_seg" => Some(7),
+    "type" => Some(8),
     _ => None,
   };
 

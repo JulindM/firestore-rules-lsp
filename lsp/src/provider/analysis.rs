@@ -174,7 +174,7 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
 
   let type_hit = type_hit_opt.unwrap();
 
-  let properties = type_hit.properties();
+  let properties = type_hit.get().properties();
   let props = properties.iter().map(|p| CompletionItem {
     label: p.0.to_owned(),
     insert_text: Some(p.0.to_owned()),
@@ -183,7 +183,7 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
     ..Default::default()
   });
 
-  let methods = type_hit.methods();
+  let methods = type_hit.get().methods();
   let methods = methods.iter().map(|p| CompletionItem {
     label: format!(
       "{}{}",

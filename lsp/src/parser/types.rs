@@ -27,7 +27,8 @@ pub enum FirebaseType {
   math_module,
   timestamp_module,
   duration_module,
-  UNKNOWN,
+  Any,
+  _UNSET,
 }
 
 pub trait FirebaseTypeTrait {
@@ -165,8 +166,8 @@ impl FirebaseTypeTrait for FirebaseType {
         ("diff", FirebaseType::MapDiff, vec![FirebaseType::Map]),
         (
           "get",
-          FirebaseType::UNKNOWN,
-          vec![FirebaseType::UNKNOWN, FirebaseType::UNKNOWN],
+          FirebaseType::Any,
+          vec![FirebaseType::Any, FirebaseType::Any],
         ),
         ("size", FirebaseType::Integer, vec![]),
         ("keys", FirebaseType::List, vec![]),
@@ -197,40 +198,34 @@ impl FirebaseTypeTrait for FirebaseType {
       ],
       FirebaseType::Null => vec![],
       FirebaseType::hashing_module => vec![
-        ("crc32", FirebaseType::Bytes, vec![FirebaseType::UNKNOWN]),
-        ("crc32c", FirebaseType::Bytes, vec![FirebaseType::UNKNOWN]),
-        ("md5", FirebaseType::Bytes, vec![FirebaseType::UNKNOWN]),
-        ("sha256", FirebaseType::Bytes, vec![FirebaseType::UNKNOWN]),
+        ("crc32", FirebaseType::Bytes, vec![FirebaseType::Any]),
+        ("crc32c", FirebaseType::Bytes, vec![FirebaseType::Any]),
+        ("md5", FirebaseType::Bytes, vec![FirebaseType::Any]),
+        ("sha256", FirebaseType::Bytes, vec![FirebaseType::Any]),
       ],
       FirebaseType::latlng_module => vec![(
         "value",
         FirebaseType::LatLng,
         vec![FirebaseType::LatLng, FirebaseType::LatLng],
       )],
-      FirebaseType::duration_module => {
-        vec![
-          ("abs", FirebaseType::Duration, vec![FirebaseType::Duration]),
-          (
-            "time",
-            FirebaseType::Duration,
-            vec![
-              FirebaseType::Integer,
-              FirebaseType::Integer,
-              FirebaseType::Integer,
-              FirebaseType::Integer,
-            ],
-          ),
-          (
-            "static",
-            FirebaseType::Duration,
-            vec![FirebaseType::Integer, FirebaseType::String],
-          ),
-        ]
-      }
-      FirebaseType::UNKNOWN => vec![],
-      FirebaseType::Auth => vec![],
-      FirebaseType::Token => vec![],
-      FirebaseType::FirebaseMap => vec![],
+      FirebaseType::duration_module => vec![
+        ("abs", FirebaseType::Duration, vec![FirebaseType::Duration]),
+        (
+          "time",
+          FirebaseType::Duration,
+          vec![
+            FirebaseType::Integer,
+            FirebaseType::Integer,
+            FirebaseType::Integer,
+            FirebaseType::Integer,
+          ],
+        ),
+        (
+          "static",
+          FirebaseType::Duration,
+          vec![FirebaseType::Integer, FirebaseType::String],
+        ),
+      ],
       FirebaseType::LatLng => vec![
         (
           "distance",
@@ -240,6 +235,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ("latitude", FirebaseType::Float, vec![]),
         ("longitude", FirebaseType::Float, vec![]),
       ],
+      _ => vec![],
     }
   }
 }
@@ -265,6 +261,23 @@ pub fn namespace_reserved_variable<'b>(name: &str) -> Option<FirebaseType> {
     "timestamp" => Some(FirebaseType::timestamp_module),
     "request" => Some(FirebaseType::Request),
     "resource" => Some(FirebaseType::Resource),
+    _ => None,
+  }
+}
+
+pub fn from_type_str<'b>(name: &str) -> Option<FirebaseType> {
+  match name {
+    "bool" => Some(FirebaseType::Boolean),
+    "int" => Some(FirebaseType::Integer),
+    "float" => Some(FirebaseType::Float),
+    "number" => Some(FirebaseType::Number),
+    "string" => Some(FirebaseType::String),
+    "list" => Some(FirebaseType::List),
+    "map" => Some(FirebaseType::Map),
+    "timestamp" => Some(FirebaseType::Timestamp),
+    "duration" => Some(FirebaseType::Duration),
+    "path" => Some(FirebaseType::Path),
+    "latlng" => Some(FirebaseType::LatLng),
     _ => None,
   }
 }

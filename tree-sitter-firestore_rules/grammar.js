@@ -99,7 +99,7 @@ module.exports = grammar({
 
     indexing: ($) =>
       prec.left(
-        8,
+        10,
         seq(
           choice($.variable, $.expr_group, $.function_call, $.list, $.map),
           "[",
@@ -110,7 +110,7 @@ module.exports = grammar({
 
     field_indexing: ($) =>
       prec.left(
-        8,
+        10,
         seq(
           choice(choice($.variable, $.function_call), $.list),
           "[",
@@ -124,24 +124,41 @@ module.exports = grammar({
     member_field: ($) =>
       seq(".", choice($.variable, $.function_call, $.field_indexing, $.member)),
 
-    member: ($) => prec.right(8, seq($.member_object, $.member_field)),
+    member: ($) => prec.right(9, seq($.member_object, $.member_field)),
 
     unary: ($) =>
       prec.right(
-        7,
+        8,
         choice(seq(repeat1("!"), $.expr), seq(repeat1("-"), $.expr))
       ),
 
     multiplication: ($) =>
-      prec.left(6, seq($.expr, choice("*", "/", "%"), $.expr)),
+      prec.left(7, seq($.expr, choice("*", "/", "%"), $.expr)),
 
-    addition: ($) => prec.left(5, seq($.expr, choice("+", "-"), $.expr)),
+    addition: ($) => prec.left(6, seq($.expr, choice("+", "-"), $.expr)),
 
     relation: ($) =>
       prec.left(
-        4,
+        5,
         seq($.expr, choice("<", "<=", ">=", ">", "==", "!=", "in"), $.expr)
       ),
+
+    type: (_) =>
+      choice(
+        "bool",
+        "int",
+        "float",
+        "number",
+        "string",
+        "list",
+        "map",
+        "timestamp",
+        "duration",
+        "path",
+        "latlng"
+      ),
+
+    type_comparison: ($) => prec.left(4, seq($.expr, "is", $.type)),
 
     conditional_and: ($) => prec.left(3, seq($.expr, "&&", $.expr)),
 
@@ -155,6 +172,7 @@ module.exports = grammar({
         $.conditional_or,
         $.conditional_and,
         $.relation,
+        $.type_comparison,
         $.addition,
         $.multiplication,
         $.unary,
