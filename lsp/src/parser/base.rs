@@ -1,5 +1,5 @@
 use std::{
-  cell::Cell,
+  cell::{Cell, OnceCell},
   fmt::{Debug, Display},
 };
 
@@ -81,6 +81,13 @@ impl<'a> BaseModel<'a> {
       BaseModel::MatchPathPart(mpp) => mpp.span(),
       BaseModel::Method(m) => m.span(),
       BaseModel::ServiceBody(body) => body.span(),
+    }
+  }
+
+  pub fn as_expr_node(&self) -> Option<&'a ExprNode> {
+    match self {
+      BaseModel::ExprNode(en) => Some(en),
+      _ => None,
     }
   }
 }
@@ -187,6 +194,29 @@ impl Function {
 
   pub fn name(&self) -> &str {
     &self.name
+  }
+
+  fn return_type<'a>(
+    &self,
+    traversal_to_match_body: Vec<BaseModel<'a>>,
+  ) -> Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
+    if self.body().is_none() {
+      return None;
+    }
+
+    let body = *self.body().as_ref().unwrap();
+
+    if body.ret().is_none() {
+      return None;
+    }
+
+    let ret = *body.ret().as_ref().unwrap();
+
+    let mut traversal_for_ret = traversal_to_match_body.clone();
+    traversal_for_ret.push(self.to_base_model());
+    traversal_for_ret.push(body.to_base_model());
+
+    ret.inferred_type(traversal_for_ret)
   }
 }
 
@@ -704,7 +734,8 @@ pub enum Expr {
   ),
   Member(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
   MemberObject(Option<Box<ExprNode>>),
-  MemberField(Option<Box<ExprNode>>),
+  MemberFunction(Identifier, Vec<ExprNode>),
+  MemberVariable(Identifier),
   Indexing(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
   FunctionCall(Identifier, Vec<ExprNode>),
   Literal(Literal),
@@ -722,6 +753,7 @@ pub struct ExprNode {
   expr: Expr,
   start: Point,
   end: Point,
+  inferred_type_cache: OnceCell<Option<(FirebaseType, Option<Result<(Point, Point), String>>)>>,
 }
 
 impl Display for ExprNode {
@@ -745,6 +777,7 @@ impl ExprNode {
       expr,
       start: node.start_position(),
       end: node.end_position(),
+      inferred_type_cache: OnceCell::new(),
     }
   }
 
@@ -758,7 +791,22 @@ impl ExprNode {
   pub fn inferred_type<'a>(
     &'a self,
     traversing_path: Vec<BaseModel<'a>>,
-  ) -> Option<(FirebaseType, Option<Result<BaseModel<'a>, String>>)> {
+  ) -> Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
+    if self.inferred_type_cache.get().is_some() {
+      return self.inferred_type_cache.get().unwrap().clone();
+    }
+
+    let inferred = self.calculate_inference(traversing_path);
+
+    self.inferred_type_cache.set(inferred.clone()).ok();
+
+    inferred
+  }
+
+  fn calculate_inference<'a>(
+    &'a self,
+    traversing_path: Vec<BaseModel<'a>>,
+  ) -> Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
     match &self.expr {
       Expr::Member(object, member) => {
         if object.is_none() || member.is_none() {
@@ -777,32 +825,11 @@ impl ExprNode {
 
         node.as_ref().unwrap().inferred_type(traversing_path)
       }
-      Expr::MemberField(node) => {
-        if node.is_none() {
-          return None;
-        }
-
-        node.as_ref().unwrap().inferred_type(traversing_path)
-      }
-      Expr::FunctionCall(ident, _) => {
-        let is_member = direct_child_of_member(traversing_path.clone());
-
-        if is_member.is_none() {
-          return Some((namespace_reserved_function(ident.value()), None));
-        } else {
-          None
-        }
-      }
+      Expr::MemberVariable(ident) => infer_member_variable_type(&traversing_path, ident),
+      Expr::MemberFunction(ident, _) => infer_member_function_type(&traversing_path, ident),
+      Expr::FunctionCall(ident, _) => find_function_type(ident, &traversing_path),
       Expr::Literal(literal) => Some((literal.firebase_type().get(), None)),
-      Expr::Variable(ident) => {
-        let is_member = direct_child_of_member(traversing_path.clone());
-
-        if is_member.is_none() {
-          Some((namespace_reserved_variable(ident.value()), None))
-        } else {
-          None
-        }
-      }
+      Expr::Variable(ident) => find_variable_type(ident, &traversing_path),
       Expr::List(_) => Some((FirebaseType::List, None)),
       Expr::Unary(op, _) => match op {
         Some(Operation::Negation) => Some((FirebaseType::Boolean, None)),
@@ -895,7 +922,163 @@ impl ExprNode {
   }
 }
 
-fn direct_child_of_member<'a>(traversing_path: Vec<BaseModel<'_>>) -> Option<&Box<ExprNode>> {
+fn find_variable_type<'a>(
+  ident: &Identifier,
+  traversing_path: &Vec<BaseModel<'a>>,
+) -> Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
+  let namespace_reserved = namespace_reserved_variable(ident.value());
+
+  if namespace_reserved.is_some() {
+    return Some((namespace_reserved.unwrap(), None));
+  }
+
+  let var_def = traversing_path
+    .iter()
+    .rev()
+    .find_map(|el| match el {
+      BaseModel::FunctionBody(body) => Some(body),
+      _ => None,
+    })
+    .and_then(|body| {
+      body
+        .variable_defs()
+        .iter()
+        .find(|vd| vd.name() == ident.value())
+    });
+
+  if var_def.is_some() {
+    let variable_type = var_def
+      .unwrap()
+      .definition()
+      .and_then(|def| def.inferred_type(traversing_path.to_owned()))
+      .and_then(|res| Some(res.0));
+
+    return Some((
+      variable_type.unwrap_or(FirebaseType::Any),
+      Some(Ok(var_def.unwrap().to_base_model().span())),
+    ));
+  }
+
+  Some((
+    FirebaseType::Any,
+    Some(Err(format!(
+      "No variable definition found for {}",
+      ident.value()
+    ))),
+  ))
+}
+
+fn find_function_type<'a>(
+  ident: &Identifier,
+  traversing_path: &Vec<BaseModel<'a>>,
+) -> Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
+  let namespace_reserved = namespace_reserved_function(ident.value());
+
+  if namespace_reserved.is_some() {
+    return Some((namespace_reserved.unwrap(), None));
+  }
+
+  let function_def_opt = traversing_path
+    .iter()
+    .enumerate()
+    .rev()
+    .find_map(|(i, el)| match el {
+      BaseModel::MatchBody(match_body) => {
+        let body_fun_hit = match_body
+          .functions()
+          .iter()
+          .find(|f| f.name() == ident.value());
+
+        if body_fun_hit.is_some() {
+          return Some((i, body_fun_hit.unwrap()));
+        }
+
+        None
+      }
+      BaseModel::ServiceBody(service_body) => {
+        let body_fun_hit = service_body
+          .functions()
+          .iter()
+          .find(|f| f.name() == ident.value());
+
+        if body_fun_hit.is_some() {
+          return Some((i, body_fun_hit.unwrap()));
+        }
+
+        None
+      }
+      _ => None,
+    });
+
+  if function_def_opt.is_some() {
+    let (bm_traversal_pos, func) = function_def_opt.unwrap();
+
+    let traversal_to_match_body = traversing_path[0..=bm_traversal_pos].to_vec();
+
+    let function_type = func
+      .return_type(traversal_to_match_body)
+      .and_then(|res| Some(res.0));
+
+    return Some((
+      function_type.unwrap_or(FirebaseType::Any),
+      Some(Ok(func.span())),
+    ));
+  } else {
+    return Some((
+      FirebaseType::Any,
+      Some(Err(format!(
+        "No function definition found for {}",
+        ident.value()
+      ))),
+    ));
+  };
+}
+
+fn infer_member_function_type<'a>(
+  traversing_path: &Vec<BaseModel<'a>>,
+  ident: &Identifier,
+) -> Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
+  let parent_object = direct_member_object_parent(traversing_path.clone());
+  if parent_object.is_none() {
+    return None;
+  }
+  let obj_exprnode = parent_object.unwrap();
+  let parent_type = obj_exprnode
+    .inferred_type(traversing_path.clone())
+    .and_then(|res| Some(res.0));
+  if parent_type.is_none() {
+    return None;
+  }
+  let inferred_function_type = infer_function_type(parent_type.unwrap(), ident.value());
+  if inferred_function_type.is_none() {
+    return None;
+  }
+  Some((inferred_function_type.unwrap(), None))
+}
+
+fn infer_member_variable_type<'a>(
+  traversing_path: &Vec<BaseModel<'a>>,
+  ident: &Identifier,
+) -> Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
+  let parent_object = direct_member_object_parent(traversing_path.clone());
+  if parent_object.is_none() {
+    return None;
+  }
+  let obj_exprnode = parent_object.unwrap();
+  let parent_type = obj_exprnode
+    .inferred_type(traversing_path.clone())
+    .and_then(|res| Some(res.0));
+  if parent_type.is_none() {
+    return None;
+  }
+  let inferred_field_type = infer_variable_type(parent_type.unwrap(), ident.value());
+  if inferred_field_type.is_none() {
+    return None;
+  }
+  Some((inferred_field_type.unwrap(), None))
+}
+
+fn direct_member_object_parent<'a>(traversing_path: Vec<BaseModel<'_>>) -> Option<&Box<ExprNode>> {
   traversing_path.last().and_then(|bm| match bm {
     BaseModel::ExprNode(en) => match &en.expr {
       Expr::Member(obj, _) => obj.as_ref(),
@@ -924,7 +1107,11 @@ impl<'a> HasChildren<'a> for ExprNode {
         .map(|e| e as &dyn HasChildren<'a>)
         .collect(),
       Expr::MemberObject(expr_node) => resolve_expr_nest(vec![expr_node]),
-      Expr::MemberField(expr_node) => resolve_expr_nest(vec![expr_node]),
+      Expr::MemberVariable(_) => vec![],
+      Expr::MemberFunction(_, function_arguments) => function_arguments
+        .iter()
+        .map(|e| e as &dyn HasChildren<'a>)
+        .collect(),
       Expr::List(expr_nodes) | Expr::Map(expr_nodes) => expr_nodes
         .iter()
         .map(|e| e as &dyn HasChildren<'a>)

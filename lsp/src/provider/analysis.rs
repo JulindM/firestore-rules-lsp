@@ -23,20 +23,20 @@ pub fn to_position(point: Point) -> Position {
 pub fn try_see_if_typable<'a>(
   traversing_path: &Vec<BaseModel<'a>>,
 ) -> Option<(
-  Option<(FirebaseType, Option<Result<BaseModel<'a>, String>>)>,
+  Option<(FirebaseType, Option<Result<(Point, Point), String>>)>,
   BaseModel<'a>,
 )> {
   if traversing_path.is_empty() {
     return None;
   }
 
-  let last = traversing_path.last().unwrap();
-
   let mut traversal_not_last = traversing_path.clone();
-  traversal_not_last.pop();
+  let last = traversal_not_last.pop();
 
   match last {
-    BaseModel::ExprNode(expr) => Some((expr.inferred_type(traversal_not_last), last.to_owned())),
+    Some(BaseModel::ExprNode(expr)) => {
+      Some((expr.inferred_type(traversal_not_last), last.unwrap()))
+    }
     _ => None,
   }
 }
@@ -69,30 +69,49 @@ pub fn get_path_traversal<'a>(
 }
 
 pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec<CompletionItem> {
-  let request_on_memeber_object = traversing_path
-    .last_chunk::<3>()
-    .and_then(|chunk| match (&chunk[0], &chunk[1], &chunk[2]) {
-      (BaseModel::ExprNode(e1), BaseModel::ExprNode(e2), _) => {
-        if let Expr::Member(object, _) = e1.expr() {
-          if let Expr::MemberField { .. } = e2.expr() {
-            return Some(object);
-          }
-        }
-        None
-      }
-      _ => None,
-    })
-    .unwrap_or(&None)
-    .to_owned();
+  let last_two = traversing_path.last_chunk::<2>();
 
-  if request_on_memeber_object.is_none() {
+  if last_two.is_none() {
+    return vec![];
+  }
+
+  let [second_last, last] = last_two.unwrap();
+
+  if last.as_expr_node().is_none() || second_last.as_expr_node().is_none() {
+    // Handle non expr node auto-completions later
+    return vec![];
+  }
+
+  let last_expr = last.as_expr_node().unwrap().expr();
+  let second_last_expr = second_last.as_expr_node().unwrap().expr();
+
+  let request_on_member_object = match second_last_expr {
+    Expr::Member(obj, _) => {
+      if obj.is_none() {
+        None
+      } else {
+        match last_expr {
+          Expr::MemberFunction(_, _) | Expr::MemberVariable(_) => {
+            Some(obj.as_ref().unwrap().to_base_model())
+          }
+          _ => None,
+        }
+      }
+    }
+    _ => None,
+  };
+
+  eprintln!("{:?}", traversing_path);
+
+  if request_on_member_object.is_none() {
     // Handle non member field auto-completions later
     return vec![];
   }
 
-  let mut traversal_at_typable = traversing_path[..traversing_path.len() - 3].to_vec();
-  let binding = request_on_memeber_object.unwrap();
-  traversal_at_typable.push(binding.to_base_model());
+  let mut traversal_at_typable = traversing_path[..traversing_path.len() - 2].to_vec();
+  traversal_at_typable.push(request_on_member_object.unwrap());
+
+  eprintln!("{:?}", traversal_at_typable);
 
   let definable = try_see_if_typable(&traversal_at_typable);
 

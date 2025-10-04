@@ -11,6 +11,7 @@ use crate::{
   parser::{
     base::{FirestoreTree, ServiceBody},
     evaluation::evaluate_tree,
+    types::FirebaseTypeTrait,
   },
   provider::{
     analysis::{get_path_traversal, get_possible_completions, to_position, try_see_if_typable},
@@ -255,10 +256,10 @@ fn handle_go_to_definition<'a>(
     (None, _) | (Some((_, None)), _) | (Some((_, Some(Err(_)))), _) => {
       Response::new_ok(req.id.clone(), definition_param.position)
     }
-    (Some((_, Some(Ok(definition_node)))), _) => {
+    (Some((_, Some(Ok(definition_span)))), _) => {
       let range = Range {
-        start: to_position(definition_node.span().0),
-        end: to_position(definition_node.span().1),
+        start: to_position(definition_span.0),
+        end: to_position(definition_span.1),
       };
 
       let location = Location {
@@ -306,17 +307,6 @@ fn handle_hover<'a>(
   let typable = try_see_if_typable(&traversal_list);
 
   if typable.is_none() {
-    let hover = Hover {
-      contents: HoverContents::Markup(MarkupContent {
-        kind: MarkupKind::PlainText,
-        value: format!("{:?}", traversal_list),
-      }),
-      range: None,
-    };
-
-    let msg = Response::new_ok::<Hover>(req.id, hover);
-
-    let _ = connection.sender.try_send(Message::Response(msg));
     return;
   }
 
@@ -328,8 +318,8 @@ fn handle_hover<'a>(
 
   let hover = Hover {
     contents: HoverContents::Markup(MarkupContent {
-      kind: MarkupKind::PlainText,
-      value: format!("{:?}", _type.unwrap()),
+      kind: MarkupKind::Markdown,
+      value: _type.unwrap().0.docstring().to_owned(),
     }),
     range: None,
   };

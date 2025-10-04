@@ -34,6 +34,7 @@ pub enum FirebaseType {
 pub trait FirebaseTypeTrait {
   fn properties(&self) -> Vec<(&'static str, FirebaseType)>;
   fn methods(&self) -> Vec<(&'static str, FirebaseType, Vec<FirebaseType>)>;
+  fn docstring(&self) -> &'static str;
 }
 
 impl FirebaseTypeTrait for FirebaseType {
@@ -235,30 +236,112 @@ impl FirebaseTypeTrait for FirebaseType {
       _ => vec![],
     }
   }
-}
 
-pub fn namespace_reserved_function<'b>(name: &str) -> FirebaseType {
-  match name {
-    "get" => FirebaseType::Resource,
-    "path" => FirebaseType::Path,
-    "getAfter" => FirebaseType::Resource,
-    "exists" => FirebaseType::Boolean,
-    "existsAfer" => FirebaseType::Boolean,
-    "debug" => FirebaseType::Boolean,
-    _ => FirebaseType::Any,
+  fn docstring(&self) -> &'static str {
+    match self {
+      FirebaseType::Boolean => {
+        "`Boolean`\n\nA boolean value (true or false).\n\nFor more information, see: [docs/reference/rules/rules.Boolean](https://firebase.google.com/docs/reference/rules/rules.Boolean)."
+      }
+      FirebaseType::Auth => {
+        "`Auth`\n\nAn object representing the authentication context of the request.\n\nFor more information, see: [docs/reference/rules/rules.Auth](https://firebase.google.com/docs/reference/rules/rules.Auth)."
+      }
+      FirebaseType::Token => {
+        "`Token`\n\nAn object representing the user's authentication token.\n\nFor more information, see: [docs/reference/rules/rules.Token](https://firebase.google.com/docs/reference/rules/rules.Token)."
+      }
+      FirebaseType::FirebaseMap => {
+        "`FirebaseMap`\n\nAn object containing additional information about the user's authentication.\n\nFor more information, see: [docs/reference/rules/rules.FirebaseMap](https://firebase.google.com/docs/reference/rules/rules.FirebaseMap)."
+      }
+      FirebaseType::Bytes => {
+        "`Bytes`\n\nA sequence of bytes, typically used for binary data.\n\nFor more information, see: [docs/reference/rules/rules.Bytes](https://firebase.google.com/docs/reference/rules/rules.Bytes)."
+      }
+      FirebaseType::Float => {
+        "`Float`\n\nA floating-point number.\n\nFor more information, see: [docs/reference/rules/rules.Float](https://firebase.google.com/docs/reference/rules/rules.Float)."
+      }
+      FirebaseType::Integer => {
+        "`Integer`\n\nAn integer number.\n\nFor more information, see: [docs/reference/rules/rules.Integer](https://firebase.google.com/docs/reference/rules/rules.Integer)."
+      }
+      FirebaseType::LatLng => {
+        "`LatLng`\n\nA geographical point represented by latitude and longitude.\n\nFor more information, see: [docs/reference/rules/rules.LatLng](https://firebase.google.com/docs/reference/rules/rules.LatLng)."
+      }
+      FirebaseType::List => {
+        "`List`\n\nAn ordered collection of values, which can be of any type.\n\nFor more information, see: [docs/reference/rules/rules.List](https://firebase.google.com/docs/reference/rules/rules.List)."
+      }
+      FirebaseType::Map => {
+        "`Map`\n\nA collection of key-value pairs, where keys are strings and values can be of any type.\n\nFor more information, see: [docs/reference/rules/rules.Map](https://firebase.google.com/docs/reference/rules/rules.Map)."
+      }
+      FirebaseType::MapDiff => {
+        "`MapDiff`\n\nAn object representing the difference between two maps.\n\nFor more information, see: [docs/reference/rules/rules.MapDiff](https://firebase.google.com/docs/reference/rules/rules.MapDiff)."
+      }
+      FirebaseType::Number => {
+        "`Number`\n\nA numeric value, which can be either an integer or a floating-point number.\n\nFor more information, see: [docs/reference/rules/rules.Number](https://firebase.google.com/docs/reference/rules/rules.Number)."
+      }
+      FirebaseType::Path => {
+        "`Path`\n\nA reference to a location in the database.\n\nFor more information, see: [docs/reference/rules/rules.Path](https://firebase.google.com/docs/reference/rules/rules.Path)."
+      }
+      FirebaseType::Duration => {
+        "`Duration`\n\nA span of time, represented in seconds and nanoseconds.\n\nFor more information, see: [docs/reference/rules/rules.Duration](https://firebase.google.com/docs/reference/rules/rules.Duration)."
+      }
+      FirebaseType::Request => {
+        "`Request`\n\nAn object representing the incoming request to the database.\n\nFor more information, see: [docs/reference/rules/rules.Request](https://firebase.google.com/docs/reference/rules/rules.Request)."
+      }
+      FirebaseType::Resource => {
+        "`Resource`\n\nAn object representing the current state of the database resource being accessed.\n\nFor more information, see: [docs/reference/rules/rules.Resource](https://firebase.google.com/docs/reference/rules/rules.Resource)."
+      }
+      FirebaseType::Set => {
+        "`Set`\n\nAn unordered collection of unique values.\n\nFor more information, see: [docs/reference/rules/rules.Set](https://firebase.google.com/docs/reference/rules/rules.Set)."
+      }
+      FirebaseType::String => {
+        "`String`\n\nA sequence of characters, typically used for text data.\n\nFor more information, see: [docs/reference/rules/rules.String](https://firebase.google.com/docs/reference/rules/rules.String)."
+      }
+      FirebaseType::Timestamp => {
+        "`Timestamp`\n\nA point in time, represented as seconds and nanoseconds since the Unix epoch.\n\nFor more information, see: [docs/reference/rules/rules.Timestamp](https://firebase.google.com/docs/reference/rules/rules.Timestamp)."
+      }
+      FirebaseType::Null => {
+        "`Null`\n\nA null value, representing the absence of a value.\n\nFor more information, see: [docs/reference/rules/rules.Null](https://firebase.google.com/docs/reference/rules/rules.Null)."
+      }
+      FirebaseType::hashing_module => {
+        "`hashing`\n\nA module providing hashing functions for various algorithms.\n\nFor more information, see: [docs/reference/rules/rules.hashing](https://firebase.google.com/docs/reference/rules/rules.hashing)."
+      }
+      FirebaseType::latlng_module => {
+        "`latlng`\n\nA module providing functions for geographical calculations using latitude and longitude.\n\nFor more information, see: [docs/reference/rules/rules.latlng](https://firebase.google.com/docs/reference/rules/rules.latlng)."
+      }
+      FirebaseType::math_module => {
+        "`math`\n\nA module providing mathematical functions and constants.\n\nFor more information, see: [docs/reference/rules/rules.math](https://firebase.google.com/docs/reference/rules/rules.math)."
+      }
+      FirebaseType::timestamp_module => {
+        "`timestamp`\n\nA module providing functions for creating and manipulating timestamps.\n\nFor more information, see: [docs/reference/rules/rules.timestamp](https://firebase.google.com/docs/reference/rules/rules.timestamp)."
+      }
+      FirebaseType::duration_module => {
+        "`duration`\n\nA module providing functions for creating and manipulating durations.\n\nFor more information, see: [docs/reference/rules/rules.duration](https://firebase.google.com/docs/reference/rules/rules.duration)."
+      }
+      FirebaseType::Any => "`Any`",
+      FirebaseType::_UNSET => "`_UNSET`\n\nAn unset or unknown type.",
+    }
   }
 }
 
-pub fn namespace_reserved_variable<'b>(name: &str) -> FirebaseType {
+pub fn namespace_reserved_function<'b>(name: &str) -> Option<FirebaseType> {
   match name {
-    "duration" => FirebaseType::duration_module,
-    "hashing" => FirebaseType::hashing_module,
-    "latlng" => FirebaseType::latlng_module,
-    "math" => FirebaseType::math_module,
-    "timestamp" => FirebaseType::timestamp_module,
-    "request" => FirebaseType::Request,
-    "resource" => FirebaseType::Resource,
-    _ => FirebaseType::Any,
+    "get" => Some(FirebaseType::Resource),
+    "path" => Some(FirebaseType::Path),
+    "getAfter" => Some(FirebaseType::Resource),
+    "exists" => Some(FirebaseType::Boolean),
+    "existsAfer" => Some(FirebaseType::Boolean),
+    "debug" => Some(FirebaseType::Boolean),
+    _ => None,
+  }
+}
+
+pub fn namespace_reserved_variable<'b>(name: &str) -> Option<FirebaseType> {
+  match name {
+    "duration" => Some(FirebaseType::duration_module),
+    "hashing" => Some(FirebaseType::hashing_module),
+    "latlng" => Some(FirebaseType::latlng_module),
+    "math" => Some(FirebaseType::math_module),
+    "timestamp" => Some(FirebaseType::timestamp_module),
+    "request" => Some(FirebaseType::Request),
+    "resource" => Some(FirebaseType::Resource),
+    _ => None,
   }
 }
 

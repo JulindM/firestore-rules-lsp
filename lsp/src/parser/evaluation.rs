@@ -482,6 +482,7 @@ fn parse_member_object<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNo
 
   let object = match object_node.kind() {
     "primary" => parse_primary(*object_node, source_bytes),
+    "member" => parse_member(*object_node, source_bytes),
     _ => None,
   };
 
@@ -497,15 +498,40 @@ fn parse_member_field<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNod
 
   let field_node = &children[1];
 
-  let field = match field_node.kind() {
-    "variable" => parse_variable(*field_node, source_bytes),
-    "function_call" => parse_function_call(*field_node, source_bytes),
-    "field_indexing" => parse_indexing(*field_node, source_bytes),
-    "member" => parse_member(*field_node, source_bytes),
-    _ => None,
-  };
+  match field_node.kind() {
+    "variable" => {
+      let var = parse_variable(*field_node, source_bytes);
 
-  field.map(|val| ExprNode::new(Expr::MemberField(Some(val.clone()).map(Box::new)), node))
+      if var.is_none() {
+        return None;
+      }
+
+      match var.unwrap().expr() {
+        Expr::Variable(ident) => Some(ExprNode::new(Expr::MemberVariable(ident.to_owned()), node)),
+        _ => None,
+      }
+    }
+    "function_call" => {
+      let func_call = parse_function_call(*field_node, source_bytes);
+
+      if func_call.is_none() {
+        return None;
+      }
+
+      match func_call.unwrap().expr() {
+        Expr::FunctionCall(ident, args) => Some(ExprNode::new(
+          Expr::MemberFunction(ident.to_owned(), args.to_owned()),
+          node,
+        )),
+        _ => None,
+      }
+    }
+    "field_indexing" => {
+      // TODO
+      None
+    }
+    _ => None,
+  }
 }
 
 fn parse_ternary<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
