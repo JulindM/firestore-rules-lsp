@@ -31,21 +31,21 @@ module.exports = grammar({
           repeat(
             choice(
               alias($.unescaped_double_string_fragment, $.string_fragment),
-              $.escape_sequence
-            )
+              $.escape_sequence,
+            ),
           ),
-          '"'
+          '"',
         ),
         seq(
           "'",
           repeat(
             choice(
               alias($.unescaped_single_string_fragment, $.string_fragment),
-              $.escape_sequence
-            )
+              $.escape_sequence,
+            ),
           ),
-          "'"
-        )
+          "'",
+        ),
       ),
 
     unescaped_double_string_fragment: (_) =>
@@ -67,10 +67,10 @@ module.exports = grammar({
           $.function_calling_name,
           token.immediate("("),
           optional(
-            seq($.function_argument, repeat(seq(",", $.function_argument)))
+            seq($.function_argument, repeat(seq(",", $.function_argument))),
           ),
-          ")"
-        )
+          ")",
+        ),
       ),
 
     variable: ($) => $.identifier,
@@ -92,7 +92,7 @@ module.exports = grammar({
         $.function_call,
         $.expr_group,
         $.list,
-        $.map
+        $.map,
       ),
 
     range: (_) => seq(/\d+/, ":", "/d+/"),
@@ -104,8 +104,8 @@ module.exports = grammar({
           choice($.variable, $.expr_group, $.function_call, $.list, $.map),
           "[",
           choice($.expr, $.range),
-          "]"
-        )
+          "]",
+        ),
       ),
 
     field_indexing: ($) =>
@@ -115,8 +115,8 @@ module.exports = grammar({
           choice(choice($.variable, $.function_call), $.list),
           "[",
           choice($.expr, $.range),
-          "]"
-        )
+          "]",
+        ),
       ),
 
     member_object: ($) => $.primary,
@@ -129,7 +129,7 @@ module.exports = grammar({
     unary: ($) =>
       prec.right(
         8,
-        choice(seq(repeat1("!"), $.expr), seq(repeat1("-"), $.expr))
+        choice(seq(repeat1("!"), $.expr), seq(repeat1("-"), $.expr)),
       ),
 
     multiplication: ($) =>
@@ -140,7 +140,7 @@ module.exports = grammar({
     relation: ($) =>
       prec.left(
         5,
-        seq($.expr, choice("<", "<=", ">=", ">", "==", "!=", "in"), $.expr)
+        seq($.expr, choice("<", "<=", ">=", ">", "==", "!=", "in"), $.expr),
       ),
 
     type: (_) =>
@@ -155,7 +155,7 @@ module.exports = grammar({
         "timestamp",
         "duration",
         "path",
-        "latlng"
+        "latlng",
       ),
 
     type_comparison: ($) => prec.left(4, seq($.expr, "is", $.type)),
@@ -178,7 +178,7 @@ module.exports = grammar({
         $.unary,
         $.member,
         $.indexing,
-        $.primary
+        $.primary,
       ),
 
     path: ($) => repeat1(seq("/", $.path_segment)),
@@ -200,7 +200,7 @@ module.exports = grammar({
         "(",
         optional($.param_list),
         ")",
-        $.function_body
+        $.function_body,
       ),
 
     path_part: (_) => /[_a-zA-Z0-9-][_a-zA-Z0-9\-]*/,
@@ -219,7 +219,7 @@ module.exports = grammar({
 
     match_path: ($) =>
       repeat1(
-        choice($.collection_path_seg, $.single_path_seg, $.multi_path_seg)
+        choice($.collection_path_seg, $.single_path_seg, $.multi_path_seg),
       ),
 
     method: (_) =>
@@ -230,7 +230,7 @@ module.exports = grammar({
         "allow",
         seq($.method, repeat(seq(",", $.method))),
         optional(seq(":", "if", $.expr)),
-        ";"
+        ";",
       ),
 
     match_def: ($) => seq("match", $.match_path, $.match_body),
