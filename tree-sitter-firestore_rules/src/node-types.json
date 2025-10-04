@@ -140,10 +140,6 @@
           "named": true
         },
         {
-          "type": "list",
-          "named": true
-        },
-        {
           "type": "range",
           "named": true
         },
@@ -568,10 +564,6 @@
           "named": true
         },
         {
-          "type": "member",
-          "named": true
-        },
-        {
           "type": "variable",
           "named": true
         }
@@ -586,6 +578,10 @@
       "multiple": false,
       "required": true,
       "types": [
+        {
+          "type": "member",
+          "named": true
+        },
         {
           "type": "primary",
           "named": true

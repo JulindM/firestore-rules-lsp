@@ -9,7 +9,8 @@
     "prestart": "tree-sitter build --wasm",
     "start": "tree-sitter playground",
     "test": "node --test bindings/node/*_test.js",
-    "build": "tree-sitter generate && tree-sitter build --wasm"
+    "build": "tree-sitter generate && tree-sitter build --wasm",
+    "debug_html": "tree-sitter parse -D --dot"
   },
   "repository": {
     "type": "git",

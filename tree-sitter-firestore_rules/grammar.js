@@ -112,19 +112,19 @@ module.exports = grammar({
       prec.left(
         10,
         seq(
-          choice(choice($.variable, $.function_call), $.list),
+          choice(choice($.variable, $.function_call)),
           "[",
           choice($.expr, $.range),
           "]",
         ),
       ),
 
-    member_object: ($) => $.primary,
+    member_object: ($) => choice($.primary, $.member),
 
     member_field: ($) =>
-      seq(".", choice($.variable, $.function_call, $.field_indexing, $.member)),
+      seq(".", choice($.variable, $.function_call, $.field_indexing)),
 
-    member: ($) => prec.right(9, seq($.member_object, $.member_field)),
+    member: ($) => prec.left(9, seq($.member_object, $.member_field)),
 
     unary: ($) =>
       prec.right(

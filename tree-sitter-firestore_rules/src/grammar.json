@@ -579,10 +579,6 @@
                     "name": "function_call"
                   }
                 ]
-              },
-              {
-                "type": "SYMBOL",
-                "name": "list"
               }
             ]
           },
@@ -611,8 +607,17 @@
       }
     },
     "member_object": {
-      "type": "SYMBOL",
-      "name": "primary"
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "primary"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "member"
+        }
+      ]
     },
     "member_field": {
       "type": "SEQ",
@@ -635,17 +640,13 @@
             {
               "type": "SYMBOL",
               "name": "field_indexing"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "member"
             }
           ]
         }
       ]
     },
     "member": {
-      "type": "PREC_RIGHT",
+      "type": "PREC_LEFT",
       "value": 9,
       "content": {
         "type": "SEQ",
