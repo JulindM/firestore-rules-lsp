@@ -135,9 +135,6 @@ impl FirebaseTypeTrait for FirebaseType {
           ("seconds", FirebaseType::Integer, vec![]),
         ]
       }
-      FirebaseType::LatLng => {
-        vec![("distance", FirebaseType::Float, vec![FirebaseType::LatLng])]
-      }
       FirebaseType::Bytes => {
         vec![
           ("size", FirebaseType::Integer, vec![]),
@@ -240,28 +237,28 @@ impl FirebaseTypeTrait for FirebaseType {
   }
 }
 
-pub fn namespace_reserved_function<'b>(name: &str) -> Option<FirebaseType> {
+pub fn namespace_reserved_function<'b>(name: &str) -> FirebaseType {
   match name {
-    "get" => Some(FirebaseType::Resource),
-    "path" => Some(FirebaseType::Path),
-    "getAfter" => Some(FirebaseType::Resource),
-    "exists" => Some(FirebaseType::Boolean),
-    "existsAfer" => Some(FirebaseType::Boolean),
-    "debug" => Some(FirebaseType::Boolean),
-    _ => None,
+    "get" => FirebaseType::Resource,
+    "path" => FirebaseType::Path,
+    "getAfter" => FirebaseType::Resource,
+    "exists" => FirebaseType::Boolean,
+    "existsAfer" => FirebaseType::Boolean,
+    "debug" => FirebaseType::Boolean,
+    _ => FirebaseType::Any,
   }
 }
 
-pub fn namespace_reserved_variable<'b>(name: &str) -> Option<FirebaseType> {
+pub fn namespace_reserved_variable<'b>(name: &str) -> FirebaseType {
   match name {
-    "duration" => Some(FirebaseType::duration_module),
-    "hashing" => Some(FirebaseType::hashing_module),
-    "latlng" => Some(FirebaseType::latlng_module),
-    "math" => Some(FirebaseType::math_module),
-    "timestamp" => Some(FirebaseType::timestamp_module),
-    "request" => Some(FirebaseType::Request),
-    "resource" => Some(FirebaseType::Resource),
-    _ => None,
+    "duration" => FirebaseType::duration_module,
+    "hashing" => FirebaseType::hashing_module,
+    "latlng" => FirebaseType::latlng_module,
+    "math" => FirebaseType::math_module,
+    "timestamp" => FirebaseType::timestamp_module,
+    "request" => FirebaseType::Request,
+    "resource" => FirebaseType::Resource,
+    _ => FirebaseType::Any,
   }
 }
 

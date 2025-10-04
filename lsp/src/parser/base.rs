@@ -6,7 +6,7 @@ use std::{
 use strum::{AsRefStr, Display};
 use tree_sitter::{Node, Point};
 
-use super::types::FirebaseType;
+use super::types::*;
 
 macro_rules! bm_span(
   ($clazz:ident $($life:lifetime),*) => (
@@ -88,19 +88,19 @@ impl<'a> BaseModel<'a> {
 impl<'a> Debug for BaseModel<'a> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      Self::Function(arg0) => f.debug_tuple("Function").finish(),
-      Self::FunctionBody(arg0) => f.debug_tuple("FunctionBody").finish(),
-      Self::Rule(arg0) => f.debug_tuple("Rule").finish(),
-      Self::VariableDefinition(arg0) => f.debug_tuple("VariableDefinition").finish(),
-      Self::MatchPath(arg0) => f.debug_tuple("MatchPath").finish(),
-      Self::Match(arg0) => f.debug_tuple("Match").finish(),
-      Self::MatchBody(arg0) => f.debug_tuple("MatchBody").finish(),
-      Self::ServiceBody(arg0) => f.debug_tuple("ServiceBody").finish(),
+      Self::Function(_) => f.debug_tuple("Function").finish(),
+      Self::FunctionBody(_) => f.debug_tuple("FunctionBody").finish(),
+      Self::Rule(_) => f.debug_tuple("Rule").finish(),
+      Self::VariableDefinition(_) => f.debug_tuple("VariableDefinition").finish(),
+      Self::MatchPath(_) => f.debug_tuple("MatchPath").finish(),
+      Self::Match(_) => f.debug_tuple("Match").finish(),
+      Self::MatchBody(_) => f.debug_tuple("MatchBody").finish(),
+      Self::ServiceBody(_) => f.debug_tuple("ServiceBody").finish(),
       Self::ExprNode(arg0) => f.debug_tuple("ExprNode").field(arg0).finish(),
-      Self::Identifier(arg0) => f.debug_tuple("Identifier").finish(),
-      Self::Literal(arg0) => f.debug_tuple("Literal").finish(),
-      Self::MatchPathPart(arg0) => f.debug_tuple("MatchPathPart").finish(),
-      Self::Method(arg0) => f.debug_tuple("Method").finish(),
+      Self::Identifier(_) => f.debug_tuple("Identifier").finish(),
+      Self::Literal(_) => f.debug_tuple("Literal").finish(),
+      Self::MatchPathPart(_) => f.debug_tuple("MatchPathPart").finish(),
+      Self::Method(_) => f.debug_tuple("Method").finish(),
     }
   }
 }
@@ -689,21 +689,6 @@ pub enum Operation {
   Modulo,
 }
 
-#[derive(Debug, Clone)]
-pub enum DefinableIdentifier {
-  Yes(Identifier),
-  No(Identifier),
-}
-
-impl DefinableIdentifier {
-  pub fn name(&self) -> &str {
-    match &self {
-      DefinableIdentifier::Yes(identifier) => identifier.value(),
-      DefinableIdentifier::No(identifier) => identifier.value(),
-    }
-  }
-}
-
 #[derive(Debug, Clone, AsRefStr)]
 pub enum Expr {
   Unary(Option<Operation>, Option<Box<ExprNode>>),
@@ -721,15 +706,15 @@ pub enum Expr {
   MemberObject(Option<Box<ExprNode>>),
   MemberField(Option<Box<ExprNode>>),
   Indexing(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
-  FunctionCall(DefinableIdentifier, Vec<ExprNode>, Cell<FirebaseType>),
+  FunctionCall(Identifier, Vec<ExprNode>),
   Literal(Literal),
-  Path(Vec<ExprNode>, Cell<FirebaseType>),
-  Variable(DefinableIdentifier, Cell<FirebaseType>),
-  List(Vec<ExprNode>, Cell<FirebaseType>),
-  Map(Vec<ExprNode>, Cell<FirebaseType>),
+  Path(Vec<ExprNode>),
+  Variable(Identifier),
+  List(Vec<ExprNode>),
+  Map(Vec<ExprNode>),
   MapEntry(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
   ExprGroup(Option<Box<ExprNode>>),
-  TypeComparison(Option<Box<ExprNode>>, Cell<FirebaseType>),
+  TypeComparison(Option<Box<ExprNode>>),
 }
 
 #[derive(Clone)]
@@ -767,26 +752,157 @@ impl ExprNode {
     &self.expr
   }
 
-  pub fn inferred_type(&self) -> Option<&Cell<FirebaseType>> {
+  /// # Arguments
+  /// * `traversing_path` - The path of BaseModels traversed to reach this ExprNode,
+  /// without including this ExprNode itself!
+  pub fn inferred_type<'a>(
+    &'a self,
+    traversing_path: Vec<BaseModel<'a>>,
+  ) -> Option<(FirebaseType, Option<Result<BaseModel<'a>, String>>)> {
     match &self.expr {
-      Expr::Member(_, member) => member.as_ref().and_then(|f| f.inferred_type()),
-      Expr::MemberObject(node) => node.as_ref().and_then(|o| o.inferred_type()),
-      Expr::MemberField(node) => node.as_ref().and_then(|f| f.inferred_type()),
-      Expr::FunctionCall(_, _, fir_type) => Some(fir_type),
-      Expr::Literal(literal) => Some(literal.firebase_type()),
-      Expr::Variable(_, fir_type) => Some(fir_type),
-      Expr::List(_, fir_type) => Some(fir_type),
-      Expr::Unary(_, _) => None,
-      Expr::Binary(_, _, _) => None,
-      Expr::Ternary(_, _, _) => None,
-      Expr::Indexing(_, _) => None,
-      Expr::Map(_, fir_type) => Some(fir_type),
-      Expr::MapEntry(_, _) => None,
-      Expr::Path(_, fir_type) => Some(fir_type),
-      Expr::ExprGroup(expr) => expr.as_ref().and_then(|e| e.inferred_type()),
-      Expr::TypeComparison(_, fir_type) => Some(fir_type),
+      Expr::Member(object, member) => {
+        if object.is_none() || member.is_none() {
+          return None;
+        }
+
+        let mut new_traversing_path = traversing_path.clone();
+        new_traversing_path.push(self.to_base_model());
+
+        return member.as_ref().unwrap().inferred_type(new_traversing_path);
+      }
+      Expr::MemberObject(node) => {
+        if node.is_none() {
+          return None;
+        }
+
+        node.as_ref().unwrap().inferred_type(traversing_path)
+      }
+      Expr::MemberField(node) => {
+        if node.is_none() {
+          return None;
+        }
+
+        node.as_ref().unwrap().inferred_type(traversing_path)
+      }
+      Expr::FunctionCall(ident, _) => {
+        let is_member = direct_child_of_member(traversing_path.clone());
+
+        if is_member.is_none() {
+          return Some((namespace_reserved_function(ident.value()), None));
+        } else {
+          None
+        }
+      }
+      Expr::Literal(literal) => Some((literal.firebase_type().get(), None)),
+      Expr::Variable(ident) => {
+        let is_member = direct_child_of_member(traversing_path.clone());
+
+        if is_member.is_none() {
+          Some((namespace_reserved_variable(ident.value()), None))
+        } else {
+          None
+        }
+      }
+      Expr::List(_) => Some((FirebaseType::List, None)),
+      Expr::Unary(op, _) => match op {
+        Some(Operation::Negation) => Some((FirebaseType::Boolean, None)),
+        _ => None,
+      },
+      Expr::Binary(op, _, _) => match op {
+        Some(Operation::And) | Some(Operation::Or) | Some(Operation::Relation) => {
+          Some((FirebaseType::Boolean, None))
+        }
+        Some(Operation::Addition)
+        | Some(Operation::Multiplication)
+        | Some(Operation::Division)
+        | Some(Operation::Substraction)
+        | Some(Operation::Modulo) => Some((FirebaseType::Number, None)),
+        _ => None,
+      },
+      Expr::Ternary(_, expr1, expr2) => {
+        let t1 = expr1
+          .as_ref()
+          .and_then(|e| e.inferred_type(traversing_path.clone()));
+        let t2 = expr2
+          .as_ref()
+          .and_then(|e| e.inferred_type(traversing_path.clone()));
+
+        if t1.is_some() && t2.is_some() {
+          let t1_type = t1.unwrap().0;
+          let t2_type = t2.unwrap().0;
+          if t1_type == t2_type {
+            return Some((t1_type, None));
+          }
+        }
+
+        Some((FirebaseType::Any, None))
+      }
+      Expr::Indexing(indexable, _) => {
+        if indexable.is_none() {
+          return None;
+        }
+
+        match indexable.as_ref().unwrap().expr() {
+          Expr::List(elements) | Expr::Map(elements) => {
+            if elements.is_empty() {
+              return Some((FirebaseType::Any, None));
+            }
+
+            let first_type = elements[0]
+              .inferred_type(traversing_path.clone())
+              .unwrap()
+              .0;
+
+            let all_types_whilemapped = elements.iter().map_while(|el| {
+              let el_type = el.inferred_type(traversing_path.clone()).unwrap().0;
+              if el_type == first_type {
+                Some(true)
+              } else {
+                None
+              }
+            });
+
+            if all_types_whilemapped.count() == elements.len() {
+              return Some((first_type, None));
+            }
+
+            Some((FirebaseType::Any, None))
+          }
+          //TODO
+          Expr::Path(_) => None,
+          _ => None,
+        }
+      }
+      Expr::Map(_) => Some((FirebaseType::Map, None)),
+      Expr::MapEntry(_, val) => {
+        if val.is_none() {
+          return None;
+        }
+
+        val.as_ref().unwrap().inferred_type(traversing_path)
+      }
+      //TODO
+      Expr::Path(_) => Some((FirebaseType::Path, None)),
+      Expr::ExprGroup(expr) => {
+        if expr.is_none() {
+          return None;
+        }
+
+        expr.as_ref().unwrap().inferred_type(traversing_path)
+      }
+      Expr::TypeComparison(_) => Some((FirebaseType::Boolean, None)),
     }
   }
+}
+
+fn direct_child_of_member<'a>(traversing_path: Vec<BaseModel<'_>>) -> Option<&Box<ExprNode>> {
+  traversing_path.last().and_then(|bm| match bm {
+    BaseModel::ExprNode(en) => match &en.expr {
+      Expr::Member(obj, _) => obj.as_ref(),
+      _ => None,
+    },
+    _ => None,
+  })
 }
 
 bm_contains!(ExprNode);
@@ -803,25 +919,25 @@ impl<'a> HasChildren<'a> for ExprNode {
       }
       Expr::Member(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
       Expr::Indexing(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
-      Expr::FunctionCall(_, function_arguments, _) => function_arguments
+      Expr::FunctionCall(_, function_arguments) => function_arguments
         .iter()
         .map(|e| e as &dyn HasChildren<'a>)
         .collect(),
       Expr::MemberObject(expr_node) => resolve_expr_nest(vec![expr_node]),
       Expr::MemberField(expr_node) => resolve_expr_nest(vec![expr_node]),
-      Expr::List(expr_nodes, _) | Expr::Map(expr_nodes, _) => expr_nodes
+      Expr::List(expr_nodes) | Expr::Map(expr_nodes) => expr_nodes
         .iter()
         .map(|e| e as &dyn HasChildren<'a>)
         .collect(),
       Expr::Literal(_) => vec![],
-      Expr::Variable(_, _) => vec![],
+      Expr::Variable(_) => vec![],
       Expr::MapEntry(key, value) => resolve_expr_nest(vec![key, value]),
-      Expr::Path(path_segments, _) => path_segments
+      Expr::Path(path_segments) => path_segments
         .iter()
         .map(|n| n as &dyn HasChildren<'a>)
         .collect(),
       Expr::ExprGroup(expr_node) => resolve_expr_nest(vec![expr_node]),
-      Expr::TypeComparison(expr_node, _) => resolve_expr_nest(vec![expr_node]),
+      Expr::TypeComparison(expr_node) => resolve_expr_nest(vec![expr_node]),
     }
   }
 }

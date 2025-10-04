@@ -7,16 +7,16 @@ use std::{collections::HashMap, error::Error};
 use tree_sitter::{Parser, Tree};
 
 use crate::{
+  StartUpType,
   parser::{
     base::{FirestoreTree, ServiceBody},
     evaluation::evaluate_tree,
   },
   provider::{
-    analysis::{get_path_traversal, get_possible_completions, to_position, try_find_definition},
+    analysis::{get_path_traversal, get_possible_completions, to_position, try_see_if_typable},
     diagnoser::build_diagnostics,
     tokenizer::{get_used_semantic_token_modifiers, get_used_semantic_token_types, tokenize},
   },
-  StartUpType,
 };
 
 pub fn start_server(startup_type: StartUpType, mut parser: Parser) -> Result<(), Box<dyn Error>> {
@@ -249,17 +249,25 @@ fn handle_go_to_definition<'a>(
 
   let traversal = get_path_traversal(definition_param.position, body);
 
-  let hit = try_find_definition(&traversal);
+  let hit = try_see_if_typable(&traversal);
 
-  let message = match hit {
-    Ok(Some(model)) => Response::new_ok(
-      req.id.clone(),
-      GotoDefinitionResponse::Scalar(Location::new(
-        definition_param.text_document.uri,
-        Range::new(to_position(model.span().0), to_position(model.span().1)),
-      )),
-    ),
-    _ => Response::new_ok(req.id.clone(), definition_param.position),
+  let message = match hit.unwrap() {
+    (None, _) | (Some((_, None)), _) | (Some((_, Some(Err(_)))), _) => {
+      Response::new_ok(req.id.clone(), definition_param.position)
+    }
+    (Some((_, Some(Ok(definition_node)))), _) => {
+      let range = Range {
+        start: to_position(definition_node.span().0),
+        end: to_position(definition_node.span().1),
+      };
+
+      let location = Location {
+        uri: definition_param.text_document.uri.clone(),
+        range,
+      };
+
+      Response::new_ok::<GotoDefinitionResponse>(req.id, GotoDefinitionResponse::Scalar(location))
+    }
   };
 
   let _ = connection.sender.try_send(Message::Response(message));
@@ -290,25 +298,38 @@ fn handle_hover<'a>(
 
   let body = match try_get_body(evaulated_trees, &hover_params.text_document) {
     Some(value) => value,
-    None => {
-      Message::Response(Response::new_ok(req.id.clone(), "No body found"));
-      return;
-    }
+    None => return,
   };
 
   let traversal_list = get_path_traversal(hover_params.position, body);
 
-  let traversal: String = traversal_list
-    .into_iter()
-    .map(|v| v.to_string().to_owned())
-    .collect::<Vec<String>>()
-    .join("->");
+  let typable = try_see_if_typable(&traversal_list);
+
+  if typable.is_none() {
+    let hover = Hover {
+      contents: HoverContents::Markup(MarkupContent {
+        kind: MarkupKind::PlainText,
+        value: format!("{:?}", traversal_list),
+      }),
+      range: None,
+    };
+
+    let msg = Response::new_ok::<Hover>(req.id, hover);
+
+    let _ = connection.sender.try_send(Message::Response(msg));
+    return;
+  }
+
+  let _type = typable.unwrap().0;
+
+  if _type.is_none() {
+    return;
+  }
 
   let hover = Hover {
     contents: HoverContents::Markup(MarkupContent {
       kind: MarkupKind::PlainText,
-      // TODO markdown
-      value: format!("{traversal:?}"),
+      value: format!("{:?}", _type.unwrap()),
     }),
     range: None,
   };

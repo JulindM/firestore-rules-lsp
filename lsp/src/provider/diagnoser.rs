@@ -1,9 +1,12 @@
 use lsp_types::{Diagnostic, DiagnosticSeverity, Range};
 use tree_sitter::{Node, Tree};
 
-use crate::parser::base::{BaseModel, Expr, FirestoreTree};
+use crate::{
+  parser::base::{BaseModel, FirestoreTree},
+  provider::analysis::try_see_if_typable,
+};
 
-use super::analysis::{bfs_execute_at, get_definable_expr, to_position, try_find_definition};
+use super::analysis::{bfs_execute_at, to_position};
 
 pub fn diagnose_syntax_errors<'a>(node: Node<'a>) -> Vec<Diagnostic> {
   let mut errors: Vec<Diagnostic> = vec![];
@@ -89,44 +92,50 @@ pub fn diagnose_linting_errors<'a>(tree: &'a FirestoreTree) -> Vec<Diagnostic> {
 }
 
 fn find_missing_definitions<'a>(traversal_list: &'a Vec<BaseModel<'a>>) -> Option<Diagnostic> {
-  match traversal_list.last() {
-    Some(model) => {
-      let expr = get_definable_expr(model);
+  let definable = try_see_if_typable(traversal_list);
 
-      if expr.is_none() {
-        return None;
-      }
+  if definable.is_none() {
+    return None;
+  }
 
-      let err_str = match expr.unwrap() {
-        Expr::FunctionCall(f_ident, _, _) => {
-          format!("No function definition found for {}", f_ident.name())
-        }
-        Expr::Variable(var_ident, _) => {
-          format!("No variable definition found for {}", var_ident.name())
-        }
-        _ => "".to_owned(),
-      };
+  let typeable = definable.unwrap();
 
-      let hit = try_find_definition(traversal_list);
+  if typeable.0.is_none() {
+    return None;
+  }
 
-      match hit {
-        Ok(None) => Some(Diagnostic {
-          range: Range {
-            start: to_position(model.span().0),
-            end: to_position(model.span().1),
-          },
-          severity: Some(DiagnosticSeverity::ERROR),
-          code: None,
-          code_description: None,
-          source: None,
-          message: err_str.to_owned(),
-          related_information: None,
-          tags: None,
-          data: None,
-        }),
-        _ => None,
-      }
-    }
+  let definition_node = typeable.0.unwrap().1;
+
+  if definition_node.is_none() {
+    return None;
+  }
+
+  let definition_result = definition_node.unwrap();
+
+  if definition_result.is_ok() {
+    return None;
+  }
+
+  let model = typeable.1;
+
+  let err_str = definition_result.err().unwrap();
+  let hit = try_see_if_typable(traversal_list);
+
+  match hit {
+    None => Some(Diagnostic {
+      range: Range {
+        start: to_position(model.span().0),
+        end: to_position(model.span().1),
+      },
+      severity: Some(DiagnosticSeverity::ERROR),
+      code: None,
+      code_description: None,
+      source: None,
+      message: err_str.to_owned(),
+      related_information: None,
+      tags: None,
+      data: None,
+    }),
     _ => None,
   }
 }
