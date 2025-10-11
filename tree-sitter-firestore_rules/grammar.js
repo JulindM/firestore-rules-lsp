@@ -8,13 +8,18 @@ module.exports = grammar({
 
   rules: {
     source_file: ($) =>
-      seq(optional($.rules_version_def), $.service_name, $.service_body),
+      seq(
+        optional($.rules_version_def),
+        "service",
+        $.service_type,
+        $.service_body,
+      ),
 
     rules_version_def: ($) => seq("rules_version", "=", $.string, ";"),
 
-    service_name: ($) => seq("service", "cloud.firestore"),
+    service_type: (_) => choice("cloud.firestore", "firebase.storage"),
 
-    comment: ($) => /\/\/.*\r?\n/,
+    comment: (_) => /\/\/.*\r?\n/,
 
     identifier: (_) => /[_a-zA-Z][_a-zA-Z0-9]*/,
 
@@ -183,7 +188,8 @@ module.exports = grammar({
 
     path: ($) => repeat1(seq("/", $.path_segment)),
 
-    path_segment: ($) => choice($.path_part, seq("$", $.expr_group)),
+    path_segment: ($) =>
+      choice($.path_part, seq("$", $.expr_group), seq("(", $.path_part, ")")),
 
     variable_def: ($) => seq("let", $.variable, "=", $.expr, ";"),
 

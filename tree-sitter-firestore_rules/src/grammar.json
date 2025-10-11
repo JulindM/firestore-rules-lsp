@@ -18,8 +18,12 @@
           ]
         },
         {
+          "type": "STRING",
+          "value": "service"
+        },
+        {
           "type": "SYMBOL",
-          "name": "service_name"
+          "name": "service_type"
         },
         {
           "type": "SYMBOL",
@@ -48,16 +52,16 @@
         }
       ]
     },
-    "service_name": {
-      "type": "SEQ",
+    "service_type": {
+      "type": "CHOICE",
       "members": [
         {
           "type": "STRING",
-          "value": "service"
+          "value": "cloud.firestore"
         },
         {
           "type": "STRING",
-          "value": "cloud.firestore"
+          "value": "firebase.storage"
         }
       ]
     },
@@ -1040,6 +1044,23 @@
             {
               "type": "SYMBOL",
               "name": "expr_group"
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "("
+            },
+            {
+              "type": "SYMBOL",
+              "name": "path_part"
+            },
+            {
+              "type": "STRING",
+              "value": ")"
             }
           ]
         }

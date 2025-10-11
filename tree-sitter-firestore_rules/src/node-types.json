@@ -776,7 +776,7 @@
     }
   },
   {
-    "type": "service_name",
+    "type": "service_type",
     "named": true,
     "fields": {}
   },
@@ -803,7 +803,7 @@
           "named": true
         },
         {
-          "type": "service_name",
+          "type": "service_type",
           "named": true
         }
       ]
@@ -1067,6 +1067,10 @@
   },
   {
     "type": "false",
+    "named": false
+  },
+  {
+    "type": "firebase.storage",
     "named": false
   },
   {
