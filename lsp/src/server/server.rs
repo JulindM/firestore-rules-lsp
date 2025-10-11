@@ -248,6 +248,12 @@ fn handle_go_to_definition<'a>(
 
   let hit = try_see_if_typable(&traversal);
 
+  if hit.is_none() {
+    let message = Response::new_ok(req.id.clone(), definition_param.position);
+    let _ = connection.sender.try_send(Message::Response(message));
+    return;
+  }
+
   let message = match hit.unwrap() {
     (None, _) | (Some((_, None)), _) | (Some((_, Some(Err(_)))), _) => {
       Response::new_ok(req.id.clone(), definition_param.position)
