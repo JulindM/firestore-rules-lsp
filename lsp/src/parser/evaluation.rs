@@ -1,11 +1,11 @@
 use tree_sitter::{Node, Tree};
 
-use crate::parser::base::MethodType;
+use crate::parser::base::{MethodType, ServiceType};
 
 use super::{
   base::{
-    Expr, ExprNode, FirestoreTree, Function, FunctionBody, Identifier, Literal, Match, MatchBody,
-    MatchPath, MatchPathPart, MatchPathPartType, Method, Operation, Rule, ServiceBody,
+    Expr, ExprNode, Function, FunctionBody, Identifier, Literal, Match, MatchBody, MatchPath,
+    MatchPathPart, MatchPathPartType, Method, Operation, Rule, RulesTree, ServiceBody,
     VariableDefinition,
   },
   types::FirebaseType,
@@ -17,23 +17,35 @@ macro_rules! sanitized_children {
   };
 }
 
-pub fn evaluate_tree(tree: Tree, source_bytes: &[u8]) -> FirestoreTree {
+pub fn evaluate_tree(tree: Tree, source_bytes: &[u8]) -> RulesTree {
   let node = tree.root_node();
 
   if node.kind() != "source_file" {
-    return FirestoreTree::new(None);
+    return RulesTree::new(None, None);
   }
 
   let mut match_body = None;
 
+  let mut service_type = None;
+
   sanitized_children!(node).for_each(|child| match child.kind() {
+    "service_type" => {
+      service_type = match child.utf8_text(source_bytes) {
+        Ok(text) => match text {
+          "cloud.firestore" => Some(ServiceType::Firestore),
+          "firebase.storage" => Some(ServiceType::Storage),
+          _ => None,
+        },
+        Err(_) => None,
+      };
+    }
     "service_body" => {
       match_body = Some(parse_service_definition(child, source_bytes));
     }
     _ => return,
   });
 
-  FirestoreTree::new(match_body)
+  RulesTree::new(service_type, match_body)
 }
 
 fn parse_service_definition<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> ServiceBody {
@@ -398,10 +410,26 @@ fn parse_indexing<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
   let field_node = &children[2];
   let field = match field_node.kind() {
     "expr" => parse_expr(*field_node, source_bytes),
+    "range" => parse_range(*field_node, source_bytes),
     _ => None,
   };
 
   let expr = Expr::Indexing(object.clone().map(Box::new), field.map(Box::new));
+
+  Some(ExprNode::new(expr, node))
+}
+
+fn parse_range<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
+  let children: Vec<Node<'b>> = sanitized_children!(node).collect();
+
+  if children.len() != 3 {
+    return None;
+  }
+
+  let start = parse_expr(children[0], source_bytes);
+  let end = parse_expr(children[2], source_bytes);
+
+  let expr = Expr::Range(start.map(Box::new), end.map(Box::new));
 
   Some(ExprNode::new(expr, node))
 }
@@ -526,10 +554,7 @@ fn parse_member_field<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNod
         _ => None,
       }
     }
-    "field_indexing" => {
-      // TODO
-      None
-    }
+    "field_indexing" => parse_indexing(node, source_bytes),
     _ => None,
   }
 }

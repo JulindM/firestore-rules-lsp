@@ -22,13 +22,12 @@ pub enum FirebaseType {
   String,
   Timestamp,
   Null,
+  Any,
   hashing_module,
   latlng_module,
   math_module,
   timestamp_module,
   duration_module,
-  Any,
-  _UNSET,
 }
 
 pub trait FirebaseTypeTrait {
@@ -315,7 +314,6 @@ impl FirebaseTypeTrait for FirebaseType {
         "`duration`\n\nA module providing functions for creating and manipulating durations.\n\nFor more information, see: [docs/reference/rules/rules.duration](https://firebase.google.com/docs/reference/rules/rules.duration)."
       }
       FirebaseType::Any => "`Any`",
-      FirebaseType::_UNSET => "`_UNSET`\n\nAn unset or unknown type.",
     }
   }
 }
@@ -341,6 +339,7 @@ pub fn namespace_reserved_variable<'b>(name: &str) -> Option<FirebaseType> {
     "timestamp" => Some(FirebaseType::timestamp_module),
     "request" => Some(FirebaseType::Request),
     "resource" => Some(FirebaseType::Resource),
+    "database" => Some(FirebaseType::String),
     _ => None,
   }
 }

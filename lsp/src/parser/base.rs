@@ -144,18 +144,29 @@ impl Contains for (Point, Point) {
   }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ServiceType {
+  Firestore,
+  Storage,
+}
+
 #[derive(Debug, Clone)]
-pub struct FirestoreTree {
+pub struct RulesTree {
+  service_type: Option<ServiceType>,
   body: Option<ServiceBody>,
 }
 
-impl FirestoreTree {
-  pub fn new(body: Option<ServiceBody>) -> Self {
-    Self { body }
+impl RulesTree {
+  pub fn new(service_type: Option<ServiceType>, body: Option<ServiceBody>) -> Self {
+    Self { service_type, body }
   }
 
   pub fn body(&self) -> Option<&ServiceBody> {
     self.body.as_ref()
+  }
+
+  pub fn service_type(&self) -> Option<&ServiceType> {
+    self.service_type.as_ref()
   }
 }
 
@@ -199,15 +210,15 @@ impl Function {
   fn return_type<'a>(
     &self,
     traversal_to_match_body: Vec<BaseModel<'a>>,
-  ) -> Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
+  ) -> &Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
     if self.body().is_none() {
-      return None;
+      return &None;
     }
 
     let body = *self.body().as_ref().unwrap();
 
     if body.ret().is_none() {
-      return None;
+      return &None;
     }
 
     let ret = *body.ret().as_ref().unwrap();
@@ -746,6 +757,7 @@ pub enum Expr {
   MapEntry(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
   ExprGroup(Option<Box<ExprNode>>),
   TypeComparison(Option<Box<ExprNode>>),
+  Range(Option<Box<ExprNode>>, Option<Box<ExprNode>>),
 }
 
 #[derive(Clone)]
@@ -789,18 +801,12 @@ impl ExprNode {
   /// * `traversing_path` - The path of BaseModels traversed to reach this ExprNode,
   /// without including this ExprNode itself!
   pub fn inferred_type<'a>(
-    &'a self,
+    &self,
     traversing_path: Vec<BaseModel<'a>>,
-  ) -> Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
-    if self.inferred_type_cache.get().is_some() {
-      return self.inferred_type_cache.get().unwrap().clone();
-    }
-
-    let inferred = self.calculate_inference(traversing_path);
-
-    self.inferred_type_cache.set(inferred.clone()).ok();
-
-    inferred
+  ) -> &Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
+    self
+      .inferred_type_cache
+      .get_or_init(|| self.calculate_inference(traversing_path))
   }
 
   fn calculate_inference<'a>(
@@ -816,14 +822,22 @@ impl ExprNode {
         let mut new_traversing_path = traversing_path.clone();
         new_traversing_path.push(self.to_base_model());
 
-        return member.as_ref().unwrap().inferred_type(new_traversing_path);
+        return member
+          .as_ref()
+          .unwrap()
+          .inferred_type(new_traversing_path)
+          .clone();
       }
       Expr::MemberObject(node) => {
         if node.is_none() {
           return None;
         }
 
-        node.as_ref().unwrap().inferred_type(traversing_path)
+        node
+          .as_ref()
+          .unwrap()
+          .inferred_type(traversing_path)
+          .clone()
       }
       Expr::MemberVariable(ident) => infer_member_variable_type(&traversing_path, ident),
       Expr::MemberFunction(ident, _) => infer_member_function_type(&traversing_path, ident),
@@ -849,10 +863,10 @@ impl ExprNode {
       Expr::Ternary(_, expr1, expr2) => {
         let t1 = expr1
           .as_ref()
-          .and_then(|e| e.inferred_type(traversing_path.clone()));
+          .and_then(|e| e.inferred_type(traversing_path.clone()).clone());
         let t2 = expr2
           .as_ref()
-          .and_then(|e| e.inferred_type(traversing_path.clone()));
+          .and_then(|e| e.inferred_type(traversing_path.clone()).clone());
 
         if t1.is_some() && t2.is_some() {
           let t1_type = t1.unwrap().0;
@@ -877,11 +891,17 @@ impl ExprNode {
 
             let first_type = elements[0]
               .inferred_type(traversing_path.clone())
+              .clone()
               .unwrap()
               .0;
 
             let all_types_whilemapped = elements.iter().map_while(|el| {
-              let el_type = el.inferred_type(traversing_path.clone()).unwrap().0;
+              let el_type = el
+                .inferred_type(traversing_path.clone())
+                .as_ref()
+                .unwrap()
+                .0;
+
               if el_type == first_type {
                 Some(true)
               } else {
@@ -906,18 +926,22 @@ impl ExprNode {
           return None;
         }
 
-        val.as_ref().unwrap().inferred_type(traversing_path)
+        val.as_ref().unwrap().inferred_type(traversing_path).clone()
       }
-      //TODO
       Expr::Path(_) => Some((FirebaseType::Path, None)),
       Expr::ExprGroup(expr) => {
         if expr.is_none() {
           return None;
         }
 
-        expr.as_ref().unwrap().inferred_type(traversing_path)
+        expr
+          .as_ref()
+          .unwrap()
+          .inferred_type(traversing_path)
+          .clone()
       }
       Expr::TypeComparison(_) => Some((FirebaseType::Boolean, None)),
+      Expr::Range(_, _) => Some((FirebaseType::List, None)),
     }
   }
 }
@@ -926,12 +950,6 @@ fn find_variable_type<'a>(
   ident: &Identifier,
   traversing_path: &Vec<BaseModel<'a>>,
 ) -> Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
-  let namespace_reserved = namespace_reserved_variable(ident.value());
-
-  if namespace_reserved.is_some() {
-    return Some((namespace_reserved.unwrap(), None));
-  }
-
   let var_def = traversing_path
     .iter()
     .rev()
@@ -950,13 +968,62 @@ fn find_variable_type<'a>(
     let variable_type = var_def
       .unwrap()
       .definition()
-      .and_then(|def| def.inferred_type(traversing_path.to_owned()))
+      .and_then(|def| def.inferred_type(traversing_path.to_owned()).as_ref())
       .and_then(|res| Some(res.0));
 
     return Some((
       variable_type.unwrap_or(FirebaseType::Any),
       Some(Ok(var_def.unwrap().to_base_model().span())),
     ));
+  }
+
+  let var_def_in_params = traversing_path
+    .iter()
+    .rev()
+    .find_map(|el| match el {
+      BaseModel::Function(func) => Some(func),
+      _ => None,
+    })
+    .and_then(|func| {
+      func
+        .parameters()
+        .iter()
+        .find(|param| param.value() == ident.value())
+    });
+
+  if var_def_in_params.is_some() {
+    return Some((
+      FirebaseType::Any,
+      Some(Ok(var_def_in_params.unwrap().to_base_model().span())),
+    ));
+  }
+
+  let var_def_in_match_path = traversing_path
+    .iter()
+    .rev()
+    .filter_map(|el| match el {
+      BaseModel::Match(m) => Some(m),
+      _ => None,
+    })
+    .find_map(|m| {
+      m.path().and_then(|p| {
+        p.path_parts()
+          .iter()
+          .find(|part| part.value() == ident.value())
+      })
+    });
+
+  if var_def_in_match_path.is_some() {
+    return Some((
+      FirebaseType::String,
+      Some(Ok(var_def_in_match_path.unwrap().to_base_model().span())),
+    ));
+  }
+
+  let namespace_reserved = namespace_reserved_variable(ident.value());
+
+  if namespace_reserved.is_some() {
+    return Some((namespace_reserved.unwrap(), None));
   }
 
   Some((
@@ -1017,6 +1084,7 @@ fn find_function_type<'a>(
 
     let function_type = func
       .return_type(traversal_to_match_body)
+      .as_ref()
       .and_then(|res| Some(res.0));
 
     return Some((
@@ -1045,6 +1113,7 @@ fn infer_member_function_type<'a>(
   let obj_exprnode = parent_object.unwrap();
   let parent_type = obj_exprnode
     .inferred_type(traversing_path.clone())
+    .as_ref()
     .and_then(|res| Some(res.0));
   if parent_type.is_none() {
     return None;
@@ -1067,6 +1136,7 @@ fn infer_member_variable_type<'a>(
   let obj_exprnode = parent_object.unwrap();
   let parent_type = obj_exprnode
     .inferred_type(traversing_path.clone())
+    .as_ref()
     .and_then(|res| Some(res.0));
   if parent_type.is_none() {
     return None;
@@ -1125,6 +1195,7 @@ impl<'a> HasChildren<'a> for ExprNode {
         .collect(),
       Expr::ExprGroup(expr_node) => resolve_expr_nest(vec![expr_node]),
       Expr::TypeComparison(expr_node) => resolve_expr_nest(vec![expr_node]),
+      Expr::Range(expr_node, expr_node1) => resolve_expr_nest(vec![expr_node, expr_node1]),
     }
   }
 }

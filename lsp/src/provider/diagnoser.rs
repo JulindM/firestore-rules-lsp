@@ -2,7 +2,7 @@ use lsp_types::{Diagnostic, DiagnosticSeverity, Range};
 use tree_sitter::{Node, Tree};
 
 use crate::{
-  parser::base::{BaseModel, FirestoreTree},
+  parser::base::{BaseModel, RulesTree, ServiceType},
   provider::analysis::try_see_if_typable,
 };
 
@@ -82,8 +82,9 @@ fn is_parse_error<'a>(node: Node<'a>) -> Option<Node<'a>> {
   None
 }
 
-pub fn diagnose_linting_errors<'a>(tree: &'a FirestoreTree) -> Vec<Diagnostic> {
-  if tree.body().is_none() {
+pub fn diagnose_linting_errors<'a>(tree: &'a RulesTree) -> Vec<Diagnostic> {
+  if tree.body().is_none() || tree.service_type() != Some(&ServiceType::Firestore) {
+    // Disable linting for non-firestore rules for now
     return vec![];
   }
 
@@ -104,13 +105,13 @@ fn find_missing_definitions<'a>(traversal_list: &'a Vec<BaseModel<'a>>) -> Optio
     return None;
   }
 
-  let definition_node = typeable.0.unwrap().1;
+  let definition_node = &typeable.0.as_ref().unwrap().1;
 
   if definition_node.is_none() {
     return None;
   }
 
-  let definition_result = definition_node.unwrap();
+  let definition_result = definition_node.as_ref().unwrap();
 
   if definition_result.is_ok() {
     return None;
@@ -118,29 +119,25 @@ fn find_missing_definitions<'a>(traversal_list: &'a Vec<BaseModel<'a>>) -> Optio
 
   let model = typeable.1;
 
-  let err_str = definition_result.err().unwrap();
-  let hit = try_see_if_typable(traversal_list);
+  let err_str = definition_result.as_ref().err().unwrap();
 
-  match hit {
-    None => Some(Diagnostic {
-      range: Range {
-        start: to_position(model.span().0),
-        end: to_position(model.span().1),
-      },
-      severity: Some(DiagnosticSeverity::ERROR),
-      code: None,
-      code_description: None,
-      source: None,
-      message: err_str.to_owned(),
-      related_information: None,
-      tags: None,
-      data: None,
-    }),
-    _ => None,
-  }
+  Some(Diagnostic {
+    range: Range {
+      start: to_position(model.span().0),
+      end: to_position(model.span().1),
+    },
+    severity: Some(DiagnosticSeverity::ERROR),
+    code: None,
+    code_description: None,
+    source: None,
+    message: err_str.to_owned(),
+    related_information: None,
+    tags: None,
+    data: None,
+  })
 }
 
-pub fn build_diagnostics(tree: &Tree, firestore_tree: &FirestoreTree) -> Vec<Diagnostic> {
+pub fn build_diagnostics(tree: &Tree, firestore_tree: &RulesTree) -> Vec<Diagnostic> {
   let mut diagnostics: Vec<Diagnostic> = vec![];
 
   let mut syntax_errors = diagnose_syntax_errors(tree.root_node());

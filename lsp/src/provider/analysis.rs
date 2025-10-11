@@ -23,7 +23,7 @@ pub fn to_position(point: Point) -> Position {
 pub fn try_see_if_typable<'a>(
   traversing_path: &Vec<BaseModel<'a>>,
 ) -> Option<(
-  Option<(FirebaseType, Option<Result<(Point, Point), String>>)>,
+  &'a Option<(FirebaseType, Option<Result<(Point, Point), String>>)>,
   BaseModel<'a>,
 )> {
   if traversing_path.is_empty() {
@@ -101,8 +101,6 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
     _ => None,
   };
 
-  eprintln!("{:?}", traversing_path);
-
   if request_on_member_object.is_none() {
     // Handle non member field auto-completions later
     return vec![];
@@ -110,8 +108,6 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
 
   let mut traversal_at_typable = traversing_path[..traversing_path.len() - 2].to_vec();
   traversal_at_typable.push(request_on_member_object.unwrap());
-
-  eprintln!("{:?}", traversal_at_typable);
 
   let definable = try_see_if_typable(&traversal_at_typable);
 
@@ -125,7 +121,7 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
     return vec![];
   }
 
-  let _type = typable.unwrap().0;
+  let _type = typable.as_ref().unwrap().0;
 
   let properties = _type.properties();
   let props = properties.iter().map(|p| CompletionItem {

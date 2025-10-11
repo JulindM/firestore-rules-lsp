@@ -9,7 +9,7 @@ use tree_sitter::{Parser, Tree};
 use crate::{
   StartUpType,
   parser::{
-    base::{FirestoreTree, ServiceBody},
+    base::{RulesTree, ServiceBody},
     evaluation::evaluate_tree,
     types::FirebaseTypeTrait,
   },
@@ -21,8 +21,6 @@ use crate::{
 };
 
 pub fn start_server(startup_type: StartUpType, mut parser: Parser) -> Result<(), Box<dyn Error>> {
-  eprintln!("Starting server over {:?}", startup_type);
-
   let (connection, io_threads) = match startup_type {
     StartUpType::STDIO => Connection::stdio(),
     StartUpType::TCP(port) => {
@@ -62,15 +60,13 @@ pub fn start_server(startup_type: StartUpType, mut parser: Parser) -> Result<(),
     Err(err) => return Err(Box::new(err)),
   };
 
-  eprintln!("LSP Initialized");
-
   main_loop(connection, &mut parser)?;
   io_threads.join()?;
 
   Ok(())
 }
 
-type LSPTreeStorage<'a> = HashMap<String, (FirestoreTree, Tree)>;
+type LSPTreeStorage<'a> = HashMap<String, (RulesTree, Tree)>;
 
 fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<dyn Error>> {
   let mut evaulated_trees: LSPTreeStorage<'a> = HashMap::new();
@@ -128,7 +124,7 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
 
 fn handle_completion_request<'a>(
   definition_r: (RequestId, CompletionParams),
-  evaulated_trees: &HashMap<String, (FirestoreTree, Tree)>,
+  evaulated_trees: &HashMap<String, (RulesTree, Tree)>,
   req: Request,
   connection: &Connection,
 ) {
@@ -159,7 +155,7 @@ fn handle_completion_request<'a>(
 
 fn publish_diagnostics<'a>(
   text_document_uri: &Uri,
-  firestore_trees: &HashMap<String, (FirestoreTree, Tree)>,
+  firestore_trees: &HashMap<String, (RulesTree, Tree)>,
   connection: &Connection,
 ) -> () {
   let find = firestore_trees.get(text_document_uri.as_str());
@@ -234,7 +230,7 @@ fn change_doc<'a>(
 
 fn handle_go_to_definition<'a>(
   definition_r: (RequestId, GotoDefinitionParams),
-  evaulated_trees: &HashMap<String, (FirestoreTree, Tree)>,
+  evaulated_trees: &HashMap<String, (RulesTree, Tree)>,
   req: Request,
   connection: &Connection,
 ) {
@@ -275,7 +271,7 @@ fn handle_go_to_definition<'a>(
 }
 
 fn try_get_body<'a>(
-  evaulated_trees: &'a HashMap<String, (FirestoreTree, Tree)>,
+  evaulated_trees: &'a HashMap<String, (RulesTree, Tree)>,
   doc: &TextDocumentIdentifier,
 ) -> Option<&'a ServiceBody> {
   let find = evaulated_trees.get(doc.uri.as_str());
@@ -319,7 +315,7 @@ fn handle_hover<'a>(
   let hover = Hover {
     contents: HoverContents::Markup(MarkupContent {
       kind: MarkupKind::Markdown,
-      value: _type.unwrap().0.docstring().to_owned(),
+      value: _type.as_ref().unwrap().0.docstring().to_owned(),
     }),
     range: None,
   };
@@ -331,7 +327,7 @@ fn handle_hover<'a>(
 
 fn handle_tokenize_request<'a>(
   tokenize_r: (RequestId, SemanticTokensParams),
-  evaulated_trees: &HashMap<String, (FirestoreTree, Tree)>,
+  evaulated_trees: &HashMap<String, (RulesTree, Tree)>,
   req: Request,
   connection: &Connection,
 ) -> () {
