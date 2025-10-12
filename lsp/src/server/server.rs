@@ -11,10 +11,12 @@ use crate::{
   parser::{
     base::{RulesTree, ServiceBody},
     evaluation::evaluate_tree,
-    types::FirebaseTypeTrait,
   },
   provider::{
-    analysis::{get_path_traversal, get_possible_completions, to_position, try_see_if_typable},
+    analysis::{
+      get_hover_result, get_path_traversal, get_possible_completions, to_position,
+      try_see_if_typable,
+    },
     diagnoser::build_diagnostics,
     tokenizer::{get_used_semantic_token_modifiers, get_used_semantic_token_types, tokenize},
   },
@@ -306,27 +308,30 @@ fn handle_hover<'a>(
 
   let traversal_list = get_path_traversal(hover_params.position, body);
 
-  let typable = try_see_if_typable(&traversal_list);
+  let hover_result = get_hover_result(&traversal_list);
 
-  if typable.is_none() {
-    return;
-  }
-
-  let _type = typable.unwrap().0;
-
-  if _type.is_none() {
+  if hover_result.is_none() {
+    let _ = connection
+      .sender
+      .try_send(Message::Response(Response::new_ok(
+        req.id,
+        Hover {
+          contents: HoverContents::Scalar(MarkedString::String("".to_string())),
+          range: None,
+        },
+      )));
     return;
   }
 
   let hover = Hover {
     contents: HoverContents::Markup(MarkupContent {
       kind: MarkupKind::Markdown,
-      value: _type.as_ref().unwrap().0.docstring().to_owned(),
+      value: hover_result.unwrap().to_owned(),
     }),
     range: None,
   };
 
-  let msg = Response::new_ok::<Hover>(req.id, hover);
+  let msg = Response::new_ok(req.id, hover);
 
   let _ = connection.sender.try_send(Message::Response(msg));
 }

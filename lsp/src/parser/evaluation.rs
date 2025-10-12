@@ -96,14 +96,25 @@ fn parse_function_def<'b>(node: Node<'b>, source_bytes: &[u8]) -> Function {
   let mut params = vec![];
   let mut body = None;
 
+  let mut name_start = None;
+
   sanitized_children!(node).for_each(|child| match child.kind() {
-    "function_name" => name = child.utf8_text(source_bytes).unwrap(),
+    "function_name" => {
+      name_start = Some(child.start_position());
+      name = child.utf8_text(source_bytes).unwrap()
+    }
     "param_list" => params = parse_param_list(child, source_bytes),
     "function_body" => body = Some(parse_function_body(child, source_bytes)),
     _ => return,
   });
 
-  Function::new(name, params, body, node)
+  Function::new(
+    name,
+    params,
+    body,
+    name_start.unwrap_or(node.start_position()),
+    node.end_position(),
+  )
 }
 
 fn parse_param_list<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> Vec<Identifier> {
@@ -148,13 +159,23 @@ fn parse_variable_def<'b>(node: Node<'b>, source_bytes: &[u8]) -> VariableDefini
   let mut name = "";
   let mut expr = None;
 
+  let mut start_pos = None;
+
   sanitized_children!(node).for_each(|child| match child.kind() {
-    "variable" => name = child.utf8_text(source_bytes).unwrap(),
+    "variable" => {
+      name = child.utf8_text(source_bytes).unwrap();
+      start_pos = Some(child.start_position());
+    }
     "expr" => expr = parse_expr(child, source_bytes),
     _ => return,
   });
 
-  VariableDefinition::new(name, expr, node)
+  VariableDefinition::new(
+    name,
+    expr,
+    start_pos.unwrap_or(node.start_position()),
+    node.end_position(),
+  )
 }
 
 fn parse_match_path<'b>(node: Node<'b>, source_bytes: &[u8]) -> MatchPath {

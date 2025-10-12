@@ -184,3 +184,48 @@ pub fn bfs_execute_at<'a, T>(
 
   curr_diagnostics
 }
+
+pub fn get_hover_result<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Option<&'static str> {
+  let mut traversing_path_not_last = traversing_path.clone();
+
+  let last = traversing_path_not_last.pop();
+
+  if last.is_none() {
+    return None;
+  }
+
+  let last_bm = last.unwrap();
+
+  let hover_result = match last_bm {
+    BaseModel::ExprNode(expr) => {
+      let inf_type = expr.inferred_type(traversing_path_not_last);
+      if inf_type.is_none() {
+        return None;
+      }
+
+      let (typ, _) = inf_type.as_ref().unwrap();
+      Some(typ.docstring())
+    }
+    BaseModel::Function(fun) => {
+      let inf_type = fun.return_type(traversing_path_not_last);
+      if inf_type.is_none() {
+        return None;
+      }
+
+      let (typ, _) = inf_type.as_ref().unwrap();
+      Some(typ.docstring())
+    }
+    BaseModel::VariableDefinition(var_def) => {
+      let inf_type = var_def.variable_type(traversing_path_not_last);
+      if inf_type.is_none() {
+        return None;
+      }
+
+      let (typ, _) = inf_type.as_ref().unwrap();
+      Some(typ.docstring())
+    }
+    _ => None,
+  };
+
+  hover_result
+}

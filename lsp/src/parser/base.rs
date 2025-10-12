@@ -3,6 +3,7 @@ use std::{
   fmt::{Debug, Display},
 };
 
+use lsp_types::Position;
 use strum::{AsRefStr, Display};
 use tree_sitter::{Node, Point};
 
@@ -184,14 +185,15 @@ impl Function {
     name: &str,
     parameters: Vec<Identifier>,
     body: Option<FunctionBody>,
-    node: Node<'a>,
+    start: Point,
+    end: Point,
   ) -> Self {
     Self {
       name: name.to_owned(),
       parameters,
       body,
-      start: node.start_position(),
-      end: node.end_position(),
+      start,
+      end,
     }
   }
 
@@ -207,7 +209,11 @@ impl Function {
     &self.name
   }
 
-  fn return_type<'a>(
+  /// Function return type taken from the return statement in the body
+  /// # Arguments
+  /// * `traversal_to_match_body` - The path of BaseModels traversed to reach
+  /// this Function, without including the Function itself!
+  pub fn return_type<'a>(
     &self,
     traversal_to_match_body: Vec<BaseModel<'a>>,
   ) -> &Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
@@ -314,12 +320,12 @@ pub struct VariableDefinition {
 }
 
 impl VariableDefinition {
-  pub fn new<'a>(name: &str, definition: Option<ExprNode>, node: Node<'a>) -> Self {
+  pub fn new<'a>(name: &str, definition: Option<ExprNode>, start: Point, end: Point) -> Self {
     Self {
       name: name.to_owned(),
       definition,
-      start: node.start_position(),
-      end: node.end_position(),
+      start,
+      end,
     }
   }
 
@@ -329,6 +335,24 @@ impl VariableDefinition {
 
   pub fn definition(&self) -> Option<&ExprNode> {
     self.definition.as_ref()
+  }
+
+  /// Variable type taken from the definition
+  /// # Arguments
+  /// * `traversing_path` - The path of BaseModels traversed to reach this VariableDefinition,
+  /// without including this VariableDefinition itself!
+  pub fn variable_type<'a>(
+    &self,
+    traversing_path: Vec<BaseModel<'a>>,
+  ) -> &Option<(FirebaseType, Option<Result<(Point, Point), String>>)> {
+    if self.definition().is_none() {
+      return &None;
+    }
+
+    let mut traversing_path_to_expr = traversing_path.clone();
+    traversing_path_to_expr.push(self.to_base_model());
+
+    (*self.definition().as_ref().unwrap()).inferred_type(traversing_path)
   }
 }
 
