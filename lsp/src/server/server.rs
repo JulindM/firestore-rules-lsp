@@ -250,17 +250,11 @@ fn handle_go_to_definition<'a>(
 
   let hit = try_see_if_typable(&traversal);
 
-  if hit.is_none() {
-    let message = Response::new_ok(req.id.clone(), definition_param.position);
-    let _ = connection.sender.try_send(Message::Response(message));
-    return;
-  }
-
-  let message = match hit.unwrap() {
-    (None, _) | (Some((_, None)), _) | (Some((_, Some(Err(_)))), _) => {
-      Response::new_ok(req.id.clone(), definition_param.position)
-    }
-    (Some((_, Some(Ok(definition_span)))), _) => {
+  let message = match hit
+    .and_then(|h| h.0.and_then(|d| d.definition_location()))
+    .unwrap()
+  {
+    Ok(definition_span) => {
       let range = Range {
         start: to_position(definition_span.0),
         end: to_position(definition_span.1),
@@ -273,6 +267,7 @@ fn handle_go_to_definition<'a>(
 
       Response::new_ok::<GotoDefinitionResponse>(req.id, GotoDefinitionResponse::Scalar(location))
     }
+    _ => Response::new_ok::<GotoDefinitionResponse>(req.id, GotoDefinitionResponse::Array(vec![])),
   };
 
   let _ = connection.sender.try_send(Message::Response(message));
@@ -324,10 +319,7 @@ fn handle_hover<'a>(
   }
 
   let hover = Hover {
-    contents: HoverContents::Markup(MarkupContent {
-      kind: MarkupKind::Markdown,
-      value: hover_result.unwrap().to_owned(),
-    }),
+    contents: HoverContents::Markup(hover_result.unwrap()),
     range: None,
   };
 

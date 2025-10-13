@@ -1,9 +1,12 @@
-use lsp_types::{CompletionItem, CompletionItemKind, Position};
+use lsp_types::{
+  CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Documentation, MarkedString,
+  MarkupContent, MarkupKind, Position,
+};
 use tree_sitter::Point;
 
 use crate::parser::{
-  base::{BaseModel, Expr, HasChildren, ToBaseModel},
-  types::{FirebaseType, FirebaseTypeTrait},
+  base::{BaseModel, Expr, HasChildren, ToBaseModel, TypeInferenceResult},
+  types::FirebaseTypeTrait,
 };
 
 pub fn to_point(position: Position) -> Point {
@@ -22,10 +25,7 @@ pub fn to_position(point: Point) -> Position {
 
 pub fn try_see_if_typable<'a>(
   traversing_path: &Vec<BaseModel<'a>>,
-) -> Option<(
-  &'a Option<(FirebaseType, Option<Result<(Point, Point), String>>)>,
-  BaseModel<'a>,
-)> {
+) -> Option<(Option<&'a TypeInferenceResult>, BaseModel<'a>)> {
   if traversing_path.is_empty() {
     return None;
   }
@@ -107,7 +107,7 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
   }
 
   let mut traversal_at_typable = traversing_path[..traversing_path.len() - 2].to_vec();
-  traversal_at_typable.push(request_on_member_object.unwrap());
+  traversal_at_typable.push(request_on_member_object.clone().unwrap());
 
   let definable = try_see_if_typable(&traversal_at_typable);
 
@@ -121,34 +121,59 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
     return vec![];
   }
 
-  let _type = typable.as_ref().unwrap().0;
+  let _type = typable.as_ref().unwrap().type_info().firebase_type();
 
   let properties = _type.properties();
   let props = properties.iter().map(|p| CompletionItem {
     label: p.0.to_owned(),
+    label_details: Some(CompletionItemLabelDetails {
+      detail: Some(format!(" {:?}", p.1.firebase_type())),
+      description: None,
+    }),
     insert_text: Some(p.0.to_owned()),
-    detail: Some(p.1.as_ref().to_owned()),
-    kind: Some(CompletionItemKind::PROPERTY),
+    documentation: Some(Documentation::MarkupContent(MarkupContent {
+      kind: MarkupKind::Markdown,
+      value: p.1.docstring().unwrap_or("").to_owned(),
+    })),
+    kind: Some(CompletionItemKind::FIELD),
     ..Default::default()
   });
 
   let methods = _type.methods();
-  let methods = methods.iter().map(|p| CompletionItem {
-    label: format!(
-      "{}{}",
-      p.0.to_owned(),
-      // TODO when parameters are there
-      if p.2.is_empty() { "()" } else { "(...)" }
-    ),
-    insert_text: Some(format!(
-      "{}{}",
-      p.0.to_owned(),
-      // TODO when parameters are there
-      if p.2.is_empty() { "()" } else { "()" }
-    )),
-    detail: Some(p.1.as_ref().to_owned()),
-    kind: Some(CompletionItemKind::FUNCTION),
-    ..Default::default()
+  let methods = methods.iter().map(|p| {
+    let param_names = p
+      .1
+      .iter()
+      .map(|param| param.name())
+      .collect::<Vec<&str>>()
+      .join(", ");
+
+    let params_markdown = p
+      .1
+      .iter()
+      .map(|param| format!("{}: {:?}", param.name(), param.param_type().firebase_type()))
+      .collect::<Vec<String>>()
+      .join(", ");
+
+    let method_doc = p.2.docstring().unwrap_or("").to_owned();
+
+    CompletionItem {
+      label: format!("{}", p.0.to_owned(),),
+      label_details: Some(CompletionItemLabelDetails {
+        detail: Some(format!("({}) → {:?}", param_names, p.2.firebase_type())),
+        description: None,
+      }),
+      insert_text: Some(p.0.to_owned()),
+      documentation: Some(Documentation::MarkupContent(MarkupContent {
+        kind: MarkupKind::Markdown,
+        value: format!(
+          "{}\n\n---\n\n#### Parameters\n`{}`",
+          method_doc, params_markdown
+        ),
+      })),
+      kind: Some(CompletionItemKind::METHOD),
+      ..Default::default()
+    }
   });
 
   return Vec::from_iter(props.chain(methods));
@@ -185,7 +210,7 @@ pub fn bfs_execute_at<'a, T>(
   curr_diagnostics
 }
 
-pub fn get_hover_result<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Option<&'static str> {
+pub fn get_hover_result<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Option<MarkupContent> {
   let mut traversing_path_not_last = traversing_path.clone();
 
   let last = traversing_path_not_last.pop();
@@ -196,36 +221,27 @@ pub fn get_hover_result<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Option<&'st
 
   let last_bm = last.unwrap();
 
-  let hover_result = match last_bm {
-    BaseModel::ExprNode(expr) => {
-      let inf_type = expr.inferred_type(traversing_path_not_last);
-      if inf_type.is_none() {
-        return None;
-      }
-
-      let (typ, _) = inf_type.as_ref().unwrap();
-      Some(typ.docstring())
-    }
-    BaseModel::Function(fun) => {
-      let inf_type = fun.return_type(traversing_path_not_last);
-      if inf_type.is_none() {
-        return None;
-      }
-
-      let (typ, _) = inf_type.as_ref().unwrap();
-      Some(typ.docstring())
-    }
-    BaseModel::VariableDefinition(var_def) => {
-      let inf_type = var_def.variable_type(traversing_path_not_last);
-      if inf_type.is_none() {
-        return None;
-      }
-
-      let (typ, _) = inf_type.as_ref().unwrap();
-      Some(typ.docstring())
-    }
+  let inference_result = match last_bm {
+    BaseModel::ExprNode(expr) => expr.inferred_type(traversing_path_not_last),
+    BaseModel::Function(fun) => fun.return_type(traversing_path_not_last),
+    BaseModel::VariableDefinition(var_def) => var_def.variable_type(traversing_path_not_last),
     _ => None,
   };
 
-  hover_result
+  if inference_result.is_none() {
+    return None;
+  }
+
+  Some(MarkupContent {
+    kind: MarkupKind::Markdown,
+    value: format!(
+      "`{:?}`\n\n---\n{}",
+      inference_result.unwrap().type_info().firebase_type(),
+      inference_result
+        .unwrap()
+        .type_info()
+        .docstring()
+        .unwrap_or("")
+    ),
+  })
 }

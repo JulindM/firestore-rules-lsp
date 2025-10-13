@@ -105,7 +105,7 @@ fn find_missing_definitions<'a>(traversal_list: &'a Vec<BaseModel<'a>>) -> Optio
     return None;
   }
 
-  let definition_node = &typeable.0.as_ref().unwrap().1;
+  let definition_node = &typeable.0.as_ref().unwrap().definition_location();
 
   if definition_node.is_none() {
     return None;
