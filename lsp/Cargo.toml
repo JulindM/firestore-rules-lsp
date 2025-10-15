@@ -1,6 +1,6 @@
 [package]
 name = "firestore-rules-lsp"
-version = "0.3.1-beta"
+version = "0.3.2-beta"
 edition = "2024"
 
 [build-dependencies]
