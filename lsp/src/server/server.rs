@@ -250,11 +250,8 @@ fn handle_go_to_definition<'a>(
 
   let hit = try_see_if_typable(&traversal);
 
-  let message = match hit
-    .and_then(|h| h.0.and_then(|d| d.definition_location()))
-    .unwrap()
-  {
-    Ok(definition_span) => {
+  let message = match hit.and_then(|h| h.0.and_then(|d| d.definition_location())) {
+    Some(Ok(definition_span)) => {
       let range = Range {
         start: to_position(definition_span.0),
         end: to_position(definition_span.1),

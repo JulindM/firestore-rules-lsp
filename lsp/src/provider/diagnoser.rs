@@ -1,8 +1,11 @@
 use lsp_types::{Diagnostic, DiagnosticSeverity, Range};
-use tree_sitter::{Node, Tree};
+use tree_sitter::{Node, Point, Tree};
 
 use crate::{
-  parser::base::{BaseModel, RulesTree, ServiceType},
+  parser::{
+    base::{BaseModel, RulesTree, ServiceType, Spanned},
+    types::FirebaseType,
+  },
   provider::analysis::try_see_if_typable,
 };
 
@@ -82,6 +85,8 @@ fn is_parse_error<'a>(node: Node<'a>) -> Option<Node<'a>> {
   None
 }
 
+type Diagnoser = fn(&Vec<BaseModel<'_>>) -> Option<Diagnostic>;
+
 pub fn diagnose_linting_errors<'a>(tree: &'a RulesTree) -> Vec<Diagnostic> {
   if tree.body().is_none() || tree.service_type() != Some(&ServiceType::Firestore) {
     // Disable linting for non-firestore rules for now
@@ -89,17 +94,90 @@ pub fn diagnose_linting_errors<'a>(tree: &'a RulesTree) -> Vec<Diagnostic> {
   }
 
   let body = tree.body().unwrap();
-  bfs_execute_at(body, &vec![], find_missing_definitions)
+
+  let diagnosers: Vec<Diagnoser> = vec![find_missing_definitions, find_if_rule_expr_not_bool];
+
+  bfs_execute_at(body, &vec![], &diagnosers)
 }
 
-fn find_missing_definitions<'a>(traversal_list: &'a Vec<BaseModel<'a>>) -> Option<Diagnostic> {
-  let definable = try_see_if_typable(traversal_list);
+fn find_if_rule_expr_not_bool(traversal_list: &Vec<BaseModel<'_>>) -> Option<Diagnostic> {
+  let last_node = traversal_list.last();
 
-  if definable.is_none() {
+  if last_node.is_none() {
     return None;
   }
 
-  let typeable = definable.unwrap();
+  let node = last_node.unwrap();
+
+  fn gen_diagnostic(fir_type: Option<FirebaseType>, span: (Point, Point)) -> Diagnostic {
+    if fir_type.is_none() {
+      return Diagnostic {
+        range: Range {
+          start: to_position(span.0),
+          end: to_position(span.1),
+        },
+        severity: Some(DiagnosticSeverity::WARNING),
+        code: None,
+        code_description: None,
+        source: None,
+        message: "Expected a boolean expression".to_owned(),
+        related_information: None,
+        tags: None,
+        data: None,
+      };
+    } else {
+      return Diagnostic {
+        range: Range {
+          start: to_position(span.0),
+          end: to_position(span.1),
+        },
+        severity: Some(DiagnosticSeverity::WARNING),
+        code: None,
+        code_description: None,
+        source: None,
+        message: format!(
+          "Expected a boolean expression, found {:?}",
+          fir_type.unwrap()
+        ),
+        related_information: None,
+        tags: None,
+        data: None,
+      };
+    }
+  }
+
+  match node {
+    BaseModel::Rule(rule) => {
+      let expr_type = rule.condition();
+
+      if expr_type.is_none() {
+        return None;
+      }
+
+      let expr = expr_type.unwrap();
+
+      let expr_type = expr
+        .inferred_type(traversal_list)
+        .and_then(|v| Some(v.type_info().firebase_type()));
+
+      if expr_type != Some(FirebaseType::Boolean) && expr_type != Some(FirebaseType::Any) {
+        return Some(gen_diagnostic(expr_type, expr.span()));
+      }
+
+      None
+    }
+    _ => None,
+  }
+}
+
+fn find_missing_definitions(traversal_list: &Vec<BaseModel<'_>>) -> Option<Diagnostic> {
+  let typable = try_see_if_typable(traversal_list);
+
+  if typable.is_none() {
+    return None;
+  }
+
+  let typeable = typable.unwrap();
 
   if typeable.0.is_none() {
     return None;

@@ -264,6 +264,7 @@ pub struct Function {
   body: Option<FunctionBody>,
   start: Point,
   end: Point,
+  return_type_cache: OnceCell<Option<TypeInferenceResult>>,
 }
 
 impl Function {
@@ -280,6 +281,7 @@ impl Function {
       body,
       start,
       end,
+      return_type_cache: OnceCell::new(),
     }
   }
 
@@ -301,8 +303,18 @@ impl Function {
   /// this Function, without including the Function itself!
   pub fn return_type<'a>(
     &self,
-    traversal_to_match_body: Vec<BaseModel<'a>>,
+    traversal_to_match_body: &Vec<BaseModel<'a>>,
   ) -> Option<&TypeInferenceResult> {
+    self
+      .return_type_cache
+      .get_or_init(|| self.calculate_return_type(traversal_to_match_body))
+      .as_ref()
+  }
+
+  fn calculate_return_type<'a>(
+    &self,
+    traversal_to_match_body: &Vec<BaseModel<'a>>,
+  ) -> Option<TypeInferenceResult> {
     if self.body().is_none() {
       return None;
     }
@@ -319,7 +331,14 @@ impl Function {
     traversal_for_ret.push(self.to_base_model());
     traversal_for_ret.push(body.to_base_model());
 
-    ret.inferred_type(traversal_for_ret)
+    let ret_inference = ret.inferred_type(&traversal_for_ret);
+
+    Some(TypeInferenceResult::new_undefinable(
+      ret_inference
+        .map(|v| v.type_info())
+        .map(|fir_type| FirebaseTypeInformation::new_undocumented(fir_type.firebase_type()))
+        .unwrap_or(FirebaseTypeInformation::new_undocumented(FirebaseType::Any)),
+    ))
   }
 }
 
@@ -403,6 +422,7 @@ pub struct VariableDefinition {
   definition: Option<ExprNode>,
   start: Point,
   end: Point,
+  definition_type_cache: OnceCell<Option<TypeInferenceResult>>,
 }
 
 impl VariableDefinition {
@@ -412,6 +432,7 @@ impl VariableDefinition {
       definition,
       start,
       end,
+      definition_type_cache: OnceCell::new(),
     }
   }
 
@@ -429,8 +450,18 @@ impl VariableDefinition {
   /// without including this VariableDefinition itself!
   pub fn variable_type<'a>(
     &self,
-    traversing_path: Vec<BaseModel<'a>>,
+    traversing_path: &Vec<BaseModel<'a>>,
   ) -> Option<&TypeInferenceResult> {
+    self
+      .definition_type_cache
+      .get_or_init(|| self.calculate_variable_definition_type(traversing_path))
+      .as_ref()
+  }
+
+  pub fn calculate_variable_definition_type<'a>(
+    &self,
+    traversing_path: &Vec<BaseModel<'a>>,
+  ) -> Option<TypeInferenceResult> {
     if self.definition().is_none() {
       return None;
     }
@@ -438,11 +469,18 @@ impl VariableDefinition {
     let mut traversing_path_to_expr = traversing_path.clone();
     traversing_path_to_expr.push(self.to_base_model());
 
-    self
+    let definition_ret = self
       .definition()
       .as_ref()
       .unwrap()
-      .inferred_type(traversing_path)
+      .inferred_type(traversing_path);
+
+    Some(TypeInferenceResult::new_undefinable(
+      definition_ret
+        .map(|v| v.type_info())
+        .map(|fir_type| FirebaseTypeInformation::new_undocumented(fir_type.firebase_type()))
+        .unwrap_or(FirebaseTypeInformation::new_undocumented(FirebaseType::Any)),
+    ))
   }
 }
 
@@ -916,7 +954,7 @@ impl ExprNode {
   /// without including this ExprNode itself!
   pub fn inferred_type<'a>(
     &self,
-    traversing_path: Vec<BaseModel<'a>>,
+    traversing_path: &Vec<BaseModel<'a>>,
   ) -> Option<&TypeInferenceResult> {
     self
       .inferred_type_cache
@@ -926,7 +964,7 @@ impl ExprNode {
 
   fn calculate_inference<'a>(
     &'a self,
-    traversing_path: Vec<BaseModel<'a>>,
+    traversing_path: &Vec<BaseModel<'a>>,
   ) -> Option<TypeInferenceResult> {
     match &self.expr {
       Expr::Member(object, member) => {
@@ -940,7 +978,7 @@ impl ExprNode {
         return member
           .as_ref()
           .unwrap()
-          .inferred_type(new_traversing_path)
+          .inferred_type(&new_traversing_path)
           .cloned();
       }
       Expr::MemberObject(node) => {
@@ -988,10 +1026,10 @@ impl ExprNode {
       Expr::Ternary(_, expr1, expr2) => {
         let t1 = expr1
           .as_ref()
-          .and_then(|e| e.inferred_type(traversing_path.clone()).clone());
+          .and_then(|e| e.inferred_type(&traversing_path).clone());
         let t2 = expr2
           .as_ref()
-          .and_then(|e| e.inferred_type(traversing_path.clone()).clone());
+          .and_then(|e| e.inferred_type(&traversing_path).clone());
 
         if t1.is_some() && t2.is_some() {
           let t1_type = t1.unwrap().type_info();
@@ -1019,13 +1057,13 @@ impl ExprNode {
             }
 
             let first_type = elements[0]
-              .inferred_type(traversing_path.clone())
+              .inferred_type(&traversing_path)
               .unwrap()
               .type_info();
 
             let all_types_whilemapped = elements.iter().map_while(|el| {
               let el_type = el
-                .inferred_type(traversing_path.clone())
+                .inferred_type(&traversing_path)
                 .as_ref()
                 .unwrap()
                 .type_info();
@@ -1125,12 +1163,7 @@ fn find_variable_type<'a>(
     let variable_type = var_def
       .unwrap()
       .definition()
-      .and_then(|def| {
-        def
-          .inferred_type(traversing_path.to_owned())
-          .as_ref()
-          .cloned()
-      })
+      .and_then(|def| def.inferred_type(&traversing_path).as_ref().cloned())
       .and_then(|res| Some(res.type_info.clone()));
 
     return Some(TypeInferenceResult::new_definable(
@@ -1254,7 +1287,7 @@ fn find_function_type<'a>(
     let traversal_to_match_body = traversing_path[0..=bm_traversal_pos].to_vec();
 
     let function_type = func
-      .return_type(traversal_to_match_body)
+      .return_type(&traversal_to_match_body)
       .as_ref()
       .and_then(|res| Some(res.type_info().clone()));
 
@@ -1294,7 +1327,7 @@ fn infer_member_function_type<'a>(
   let obj_exprnode = parent_object.unwrap();
 
   let parent_type = obj_exprnode
-    .inferred_type(traversing_path.clone())
+    .inferred_type(&traversing_path)
     .as_ref()
     .and_then(|res| Some(res.type_info()));
 
@@ -1326,7 +1359,7 @@ fn infer_member_variable_type<'a>(
   let obj_exprnode = parent_object.unwrap();
 
   let parent_type = obj_exprnode
-    .inferred_type(traversing_path.clone())
+    .inferred_type(&traversing_path)
     .as_ref()
     .and_then(|res| Some(res.type_info()));
 

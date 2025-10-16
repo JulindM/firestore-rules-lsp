@@ -1,6 +1,6 @@
 use lsp_types::{
-  CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Documentation, MarkedString,
-  MarkupContent, MarkupKind, Position,
+  CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Documentation, MarkupContent,
+  MarkupKind, Position,
 };
 use tree_sitter::Point;
 
@@ -31,14 +31,22 @@ pub fn try_see_if_typable<'a>(
   }
 
   let mut traversal_not_last = traversing_path.clone();
-  let last = traversal_not_last.pop();
+  let last_opt = traversal_not_last.pop();
 
-  match last {
-    Some(BaseModel::ExprNode(expr)) => {
-      Some((expr.inferred_type(traversal_not_last), last.unwrap()))
-    }
-    _ => None,
+  if last_opt.is_none() {
+    return None;
   }
+
+  let last = last_opt.unwrap();
+
+  let inference_info = match &last {
+    BaseModel::ExprNode(expr) => expr.inferred_type(&traversal_not_last),
+    BaseModel::Function(fun) => fun.return_type(&traversal_not_last),
+    BaseModel::VariableDefinition(vd) => vd.variable_type(&traversal_not_last),
+    _ => None,
+  };
+
+  Some((inference_info, last))
 }
 
 pub fn get_path_traversal<'a>(
@@ -184,23 +192,23 @@ type TraversableConsuming<'a, T> = fn(&Vec<BaseModel<'a>>) -> Option<T>;
 pub fn bfs_execute_at<'a, T>(
   nestable: &'a dyn HasChildren<'a>,
   existing_traversal: &Vec<BaseModel<'a>>,
-  function: TraversableConsuming<'a, T>,
+  consumers: &Vec<TraversableConsuming<'a, T>>,
 ) -> Vec<T> {
-  // TODO avoid cloning here - use some sort of slice
   let mut curr_traversal = existing_traversal.clone();
 
   curr_traversal.push(nestable.to_base_model());
 
   let mut curr_diagnostics: Vec<T> = vec![];
 
-  let result_opt = function(&curr_traversal);
-
-  if let Some(result) = result_opt {
-    curr_diagnostics.push(result);
-  }
+  consumers.iter().for_each(|consumer| {
+    let result = consumer(&curr_traversal);
+    if result.is_some() {
+      curr_diagnostics.push(result.unwrap());
+    }
+  });
 
   for child in nestable.children() {
-    let mut child_results = bfs_execute_at(child, &curr_traversal, function);
+    let mut child_results = bfs_execute_at(child, &curr_traversal, consumers);
 
     if !child_results.is_empty() {
       curr_diagnostics.append(&mut child_results);
@@ -211,37 +219,18 @@ pub fn bfs_execute_at<'a, T>(
 }
 
 pub fn get_hover_result<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Option<MarkupContent> {
-  let mut traversing_path_not_last = traversing_path.clone();
+  let hover_result = try_see_if_typable(traversing_path)
+    .and_then(|res| res.0)
+    .and_then(|t| Some((t.type_info().firebase_type(), t.type_info().docstring())));
 
-  let last = traversing_path_not_last.pop();
-
-  if last.is_none() {
+  if hover_result.is_none() {
     return None;
   }
 
-  let last_bm = last.unwrap();
-
-  let inference_result = match last_bm {
-    BaseModel::ExprNode(expr) => expr.inferred_type(traversing_path_not_last),
-    BaseModel::Function(fun) => fun.return_type(traversing_path_not_last),
-    BaseModel::VariableDefinition(var_def) => var_def.variable_type(traversing_path_not_last),
-    _ => None,
-  };
-
-  if inference_result.is_none() {
-    return None;
-  }
+  let (fir_type, docstr) = hover_result.unwrap();
 
   Some(MarkupContent {
     kind: MarkupKind::Markdown,
-    value: format!(
-      "`{:?}`\n\n---\n{}",
-      inference_result.unwrap().type_info().firebase_type(),
-      inference_result
-        .unwrap()
-        .type_info()
-        .docstring()
-        .unwrap_or("")
-    ),
+    value: format!("`{:?}`\n\n---\n{}", fir_type, docstr.unwrap_or("")),
   })
 }
