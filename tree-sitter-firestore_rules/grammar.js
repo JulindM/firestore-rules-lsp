@@ -148,6 +148,8 @@ module.exports = grammar({
         seq($.expr, choice("<", "<=", ">=", ">", "==", "!=", "in"), $.expr),
       ),
 
+    direct_required_whitespace: (_) => token.immediate(choice(" ", "\n", "\r")),
+
     type: (_) =>
       choice(
         "bool",
@@ -191,17 +193,25 @@ module.exports = grammar({
     path_segment: ($) =>
       choice($.path_part, seq("$", $.expr_group), seq("(", $.path_part, ")")),
 
-    variable_def: ($) => seq("let", $.variable, "=", $.expr, ";"),
+    variable_def: ($) =>
+      seq("let", $.direct_required_whitespace, $.variable, "=", $.expr, ";"),
 
-    fun_return: ($) => seq("return", $.expr, ";"),
+    fun_return: ($) =>
+      seq(
+        "return",
+        choice(seq($.direct_required_whitespace, $.expr), $.expr_group),
+        ";",
+      ),
 
-    function_body: ($) => seq("{", repeat($.variable_def), $.fun_return, "}"),
+    function_body: ($) =>
+      seq("{", repeat($.variable_def), optional($.fun_return), "}"),
 
     param_list: ($) => seq($.identifier, repeat(seq(",", $.identifier))),
 
     function_def: ($) =>
       seq(
         "function",
+        $.direct_required_whitespace,
         alias($.identifier, "function_name"),
         "(",
         optional($.param_list),
@@ -234,12 +244,19 @@ module.exports = grammar({
     rule_def: ($) =>
       seq(
         "allow",
-        seq($.method, repeat(seq(",", $.method))),
-        optional(seq(":", "if", $.expr)),
+        seq($.direct_required_whitespace, $.method, repeat(seq(",", $.method))),
+        optional(
+          seq(
+            ":",
+            "if",
+            choice(seq($.direct_required_whitespace, $.expr), $.expr_group),
+          ),
+        ),
         ";",
       ),
 
-    match_def: ($) => seq("match", $.match_path, $.match_body),
+    match_def: ($) =>
+      seq("match", $.direct_required_whitespace, $.match_path, $.match_body),
 
     service_body: ($) =>
       seq("{", repeat(choice($.function_def, $.match_def, $.rule_def)), "}"),

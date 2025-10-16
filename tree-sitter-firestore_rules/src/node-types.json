@@ -155,11 +155,19 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
+          "type": "direct_required_whitespace",
+          "named": true
+        },
+        {
           "type": "expr",
+          "named": true
+        },
+        {
+          "type": "expr_group",
           "named": true
         }
       ]
@@ -190,7 +198,7 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "fun_return",
@@ -245,6 +253,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "direct_required_whitespace",
+          "named": true
+        },
         {
           "type": "function_body",
           "named": true
@@ -495,6 +507,10 @@
       "required": true,
       "types": [
         {
+          "type": "direct_required_whitespace",
+          "named": true
+        },
+        {
           "type": "match_body",
           "named": true
         },
@@ -727,7 +743,15 @@
       "required": true,
       "types": [
         {
+          "type": "direct_required_whitespace",
+          "named": true
+        },
+        {
           "type": "expr",
+          "named": true
+        },
+        {
+          "type": "expr_group",
           "named": true
         },
         {
@@ -906,6 +930,10 @@
       "required": true,
       "types": [
         {
+          "type": "direct_required_whitespace",
+          "named": true
+        },
+        {
           "type": "expr",
           "named": true
         },
@@ -1058,6 +1086,10 @@
     "named": false
   },
   {
+    "type": "direct_required_whitespace",
+    "named": true
+  },
+  {
     "type": "duration",
     "named": false
   },
@@ -1135,11 +1167,11 @@
   },
   {
     "type": "number",
-    "named": true
+    "named": false
   },
   {
     "type": "number",
-    "named": false
+    "named": true
   },
   {
     "type": "path",
