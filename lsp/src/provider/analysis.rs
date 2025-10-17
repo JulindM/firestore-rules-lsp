@@ -1,12 +1,12 @@
 use lsp_types::{
-  CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Documentation, MarkupContent,
-  MarkupKind, Position,
+  CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionItemTag, Documentation,
+  MarkupContent, MarkupKind, Position, SemanticTokensWorkspaceClientCapabilities,
 };
 use tree_sitter::Point;
 
 use crate::parser::{
   base::{BaseModel, Expr, HasChildren, ToBaseModel, TypeInferenceResult},
-  types::FirebaseTypeTrait,
+  types::{FirebaseTypeTrait, GLOBAL_FUNCTIONS, GLOBAL_VARIABLES, SPECIAL_KEYWORDS, VariableType},
 };
 
 pub fn to_point(position: Position) -> Point {
@@ -76,18 +76,61 @@ pub fn get_path_traversal<'a>(
   res
 }
 
+pub fn generate_scoped_autocompletions<'a>(
+  traversing_path: &Vec<BaseModel<'a>>,
+) -> Vec<CompletionItem> {
+  let current_scope_variables = get_scoped_variables(traversing_path);
+  let current_scope_functions = get_scoped_functions(traversing_path);
+  let firestore_reserved_keywords = SPECIAL_KEYWORDS;
+
+  let var_completions = current_scope_variables.iter().map(|var| CompletionItem {
+    label: var.0.to_owned(),
+    insert_text: Some(var.0.to_owned()),
+    kind: Some(match var.2 {
+      VariableType::Variable => CompletionItemKind::VARIABLE,
+      VariableType::Module => CompletionItemKind::MODULE,
+    }),
+    // TODO: Add type to detail
+    detail: Some("".to_owned()),
+    ..Default::default()
+  });
+
+  let func_completions = current_scope_functions.iter().map(|fun| CompletionItem {
+    label: fun.0.to_owned(),
+    insert_text: Some(fun.0.to_owned()),
+    kind: match fun.1 {
+      true => Some(CompletionItemKind::FUNCTION),
+      false => Some(CompletionItemKind::METHOD),
+    },
+    // TODO: Add parameters to detail
+    detail: Some("()".to_owned()),
+    ..Default::default()
+  });
+
+  let special_keyword_completions = firestore_reserved_keywords.iter().map(|kw| CompletionItem {
+    label: kw.to_string(),
+    insert_text: Some(kw.to_string()),
+    kind: Some(CompletionItemKind::KEYWORD),
+    ..Default::default()
+  });
+
+  return Vec::from_iter(
+    var_completions.chain(func_completions.chain(special_keyword_completions)),
+  );
+}
+
 pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec<CompletionItem> {
   let last_two = traversing_path.last_chunk::<2>();
 
   if last_two.is_none() {
+    // We have no idea where we are
     return vec![];
   }
 
   let [second_last, last] = last_two.unwrap();
 
   if last.as_expr_node().is_none() || second_last.as_expr_node().is_none() {
-    // Handle non expr node auto-completions later
-    return vec![];
+    return generate_scoped_autocompletions(traversing_path);
   }
 
   let last_expr = last.as_expr_node().unwrap().expr();
@@ -110,7 +153,8 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
   };
 
   if request_on_member_object.is_none() {
-    // Handle non member field auto-completions later
+    // We somehow are not requesting a member but the last two are expr nodes
+    // No clue where we are
     return vec![];
   }
 
@@ -149,13 +193,6 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
 
   let methods = _type.methods();
   let methods = methods.iter().map(|p| {
-    let param_names = p
-      .1
-      .iter()
-      .map(|param| param.name())
-      .collect::<Vec<&str>>()
-      .join(", ");
-
     let params_markdown = p
       .1
       .iter()
@@ -168,7 +205,7 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
     CompletionItem {
       label: format!("{}", p.0.to_owned(),),
       label_details: Some(CompletionItemLabelDetails {
-        detail: Some(format!("({}) → {:?}", param_names, p.2.firebase_type())),
+        detail: Some(format!("({}) → {:?}", params_markdown, p.2.firebase_type())),
         description: None,
       }),
       insert_text: Some(p.0.to_owned()),
@@ -185,6 +222,52 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
   });
 
   return Vec::from_iter(props.chain(methods));
+}
+
+fn get_scoped_variables<'a>(
+  traversing_path: &Vec<BaseModel<'a>>,
+) -> Vec<(String, bool, VariableType)> {
+  let mut scoped_vars = vec![];
+
+  for node in traversing_path.iter().rev() {
+    match node {
+      BaseModel::FunctionBody(fun) => scoped_vars.extend(
+        fun
+          .variable_defs()
+          .iter()
+          .map(|def| (def.name().to_owned(), false, VariableType::Variable)),
+      ),
+      _ => continue,
+    }
+  }
+
+  scoped_vars.extend(
+    GLOBAL_VARIABLES
+      .iter()
+      .map(|def| (def.0.to_owned(), true, def.2.clone())),
+  );
+
+  scoped_vars
+}
+
+fn get_scoped_functions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec<(String, bool)> {
+  let mut scoped_funs: Vec<(String, bool)> = vec![];
+
+  for node in traversing_path.iter().rev() {
+    match node {
+      BaseModel::MatchBody(body) => scoped_funs.extend(
+        body
+          .functions()
+          .iter()
+          .map(|def| (def.name().to_owned(), false)),
+      ),
+      _ => continue,
+    }
+  }
+
+  scoped_funs.extend(GLOBAL_FUNCTIONS.iter().map(|def| (def.0.to_owned(), true)));
+
+  scoped_funs
 }
 
 type TraversableConsuming<'a, T> = fn(&Vec<BaseModel<'a>>) -> Option<T>;
