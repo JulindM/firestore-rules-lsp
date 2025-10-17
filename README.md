@@ -36,13 +36,10 @@ for the lsp to initialize the connection
 - Publish Diagnostics Notifications
 - Hover
 - Autocomplete
-- Crude linting
-  - Currently it supports diagnostics of variable usages that no definiton was found for them
-
-### Planned capabilites
-
-- Improved Hover for type documentation
-- Signature Help Request
+- Linting
+  - Diagnostics of variable usages that no definiton was found for them
+  - Diagnostics of function calls that no definition was found for them
+  - Diagnostics on rules that do not resolve to a boolean value
 
 ### Also check out
 
