@@ -165,10 +165,6 @@
         {
           "type": "expr",
           "named": true
-        },
-        {
-          "type": "expr_group",
-          "named": true
         }
       ]
     }
@@ -728,6 +724,10 @@
       "required": true,
       "types": [
         {
+          "type": "direct_required_whitespace",
+          "named": true
+        },
+        {
           "type": "expr",
           "named": true
         }
@@ -748,10 +748,6 @@
         },
         {
           "type": "expr",
-          "named": true
-        },
-        {
-          "type": "expr_group",
           "named": true
         },
         {
@@ -880,6 +876,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "direct_required_whitespace",
+          "named": true
+        },
         {
           "type": "expr",
           "named": true

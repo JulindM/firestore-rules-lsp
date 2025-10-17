@@ -1,6 +1,6 @@
 use lsp_types::{
-  CompletionItem, CompletionItemKind, CompletionItemLabelDetails, CompletionItemTag, Documentation,
-  MarkupContent, MarkupKind, Position, SemanticTokensWorkspaceClientCapabilities,
+  CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Documentation, MarkupContent,
+  MarkupKind, Position,
 };
 use tree_sitter::Point;
 

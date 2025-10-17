@@ -145,7 +145,13 @@ module.exports = grammar({
     relation: ($) =>
       prec.left(
         5,
-        seq($.expr, choice("<", "<=", ">=", ">", "==", "!=", "in"), $.expr),
+        seq(
+          $.expr,
+          choice(
+            seq(choice("<", "<=", ">=", ">", "==", "!="), $.expr),
+            seq("in", $.direct_required_whitespace, $.expr),
+          ),
+        ),
       ),
 
     direct_required_whitespace: (_) => token.immediate(choice(" ", "\n", "\r")),
@@ -165,7 +171,8 @@ module.exports = grammar({
         "latlng",
       ),
 
-    type_comparison: ($) => prec.left(4, seq($.expr, "is", $.type)),
+    type_comparison: ($) =>
+      prec.left(4, seq($.expr, "is", $.direct_required_whitespace, $.type)),
 
     conditional_and: ($) => prec.left(3, seq($.expr, "&&", $.expr)),
 
@@ -196,12 +203,7 @@ module.exports = grammar({
     variable_def: ($) =>
       seq("let", $.direct_required_whitespace, $.variable, "=", $.expr, ";"),
 
-    fun_return: ($) =>
-      seq(
-        "return",
-        choice(seq($.direct_required_whitespace, $.expr), $.expr_group),
-        ";",
-      ),
+    fun_return: ($) => seq("return", $.direct_required_whitespace, $.expr, ";"),
 
     function_body: ($) =>
       seq("{", repeat($.variable_def), optional($.fun_return), "}"),
@@ -245,13 +247,7 @@ module.exports = grammar({
       seq(
         "allow",
         seq($.direct_required_whitespace, $.method, repeat(seq(",", $.method))),
-        optional(
-          seq(
-            ":",
-            "if",
-            choice(seq($.direct_required_whitespace, $.expr), $.expr_group),
-          ),
-        ),
+        optional(seq(":", "if", $.direct_required_whitespace, $.expr)),
         ";",
       ),
 
