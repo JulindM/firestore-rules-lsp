@@ -26,7 +26,8 @@ pub fn start_server(startup_type: StartUpType, mut parser: Parser) -> Result<(),
   let (connection, io_threads) = match startup_type {
     StartUpType::STDIO => Connection::stdio(),
     StartUpType::TCP(port) => {
-      let addr = format!("0.0.0.0:{port}");
+      let addr = format!("127.0.0.1:{port}");
+      eprintln!("Server connection, {}", addr);
       Connection::connect(addr)?
     }
   };
