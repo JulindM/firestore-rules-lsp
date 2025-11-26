@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 use strum::AsRefStr;
 
-use crate::parser::base::{FirebaseTypeInformation, FunctionParameter};
+use super::base::{FirebaseTypeInformation, FunctionParameter};
 
 #[derive(Debug, Clone, Copy, PartialEq, AsRefStr)]
 pub enum FirebaseType {

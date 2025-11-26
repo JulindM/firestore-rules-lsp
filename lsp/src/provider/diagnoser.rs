@@ -1,15 +1,8 @@
 use lsp_types::{Diagnostic, DiagnosticSeverity, Range};
 use tree_sitter::{Node, Point, Tree};
 
-use crate::{
-  parser::{
-    base::{BaseModel, RulesTree, ServiceType, Spanned},
-    types::FirebaseType,
-  },
-  provider::analysis::try_see_if_typable,
-};
-
-use super::analysis::{bfs_execute_at, to_position};
+use super::analysis::*;
+use crate::parser::{base::*, types::*};
 
 pub fn diagnose_syntax_errors<'a>(node: Node<'a>) -> Vec<Diagnostic> {
   let mut errors: Vec<Diagnostic> = vec![];

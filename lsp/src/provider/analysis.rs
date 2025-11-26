@@ -2,12 +2,10 @@ use lsp_types::{
   CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Documentation, MarkupContent,
   MarkupKind, Position,
 };
+
 use tree_sitter::Point;
 
-use crate::parser::{
-  base::{BaseModel, Expr, HasChildren, ToBaseModel, TypeInferenceResult},
-  types::{FirebaseTypeTrait, GLOBAL_FUNCTIONS, GLOBAL_VARIABLES, SPECIAL_KEYWORDS, VariableType},
-};
+use crate::parser::{base::*, types::*};
 
 pub fn to_point(position: Position) -> Point {
   Point::new(

@@ -1,15 +1,6 @@
 use tree_sitter::{Node, Tree};
 
-use crate::parser::base::{MethodType, ServiceType};
-
-use super::{
-  base::{
-    Expr, ExprNode, Function, FunctionBody, Identifier, Literal, Match, MatchBody, MatchPath,
-    MatchPathPart, MatchPathPartType, Method, Operation, Rule, RulesTree, ServiceBody,
-    VariableDefinition,
-  },
-  types::FirebaseType,
-};
+use super::{base::*, types::*};
 
 macro_rules! sanitized_children {
   ($node: ident) => {
