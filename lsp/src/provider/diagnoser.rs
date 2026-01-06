@@ -1,4 +1,5 @@
 use lsp_types::{Diagnostic, DiagnosticSeverity, Range};
+use serde::de;
 use tree_sitter::{Node, Point, Tree};
 
 use super::analysis::*;
@@ -151,7 +152,7 @@ fn find_if_rule_expr_not_bool(traversal_list: &Vec<Base<'_>>) -> Option<Vec<Diag
 
       let expr_type = expr
         .inferred_type(traversal_list)
-        .and_then(|v| Some(v.type_info().firebase_type()));
+        .and_then(|v| Some(v.type_information().firebase_type()));
 
       if expr_type != Some(FirebaseType::Boolean) && expr_type != Some(FirebaseType::Any) {
         return Some(vec![gen_diagnostic(expr_type, expr.span())]);
@@ -164,87 +165,76 @@ fn find_if_rule_expr_not_bool(traversal_list: &Vec<Base<'_>>) -> Option<Vec<Diag
 }
 
 fn find_missing_definitions(traversal_list: &Vec<Base<'_>>) -> Option<Vec<Diagnostic>> {
-  let last = traversal_list.last();
-
-  if last.is_none() {
-    return None;
-  }
-
-  if let Base::ExprNode(expr_node) = last.unwrap() {
-    let mut children_of_operations = vec![];
-
-    match expr_node.expr() {
-      Expr::Binary(_, Some(left), Some(right)) => {
-        children_of_operations.push(left);
-        children_of_operations.push(right);
-      }
-      Expr::Unary(_, Some(child)) => {
-        children_of_operations.push(child);
-      }
-      _ => {}
-    }
-
-    if !children_of_operations.is_empty() {
-      return children_of_operations
-        .iter()
-        .map(|child| {
-          let mut traversal_to_child = traversal_list.clone();
-          traversal_to_child.push(child.to_base_model());
-          find_missing_definitions(&traversal_to_child)
-        })
-        .collect::<Option<Vec<Vec<Diagnostic>>>>()
-        .and_then(|vecs| {
-          let mut diagnostics = vec![];
-          for mut v in vecs {
-            diagnostics.append(&mut v);
-          }
-          Some(diagnostics)
-        });
-    }
-  }
-
   let typable = try_see_if_typable(traversal_list);
 
   if typable.is_none() {
     return None;
   }
 
-  let typeable = typable.unwrap();
+  let inference_result_opt = &typable.as_ref().unwrap().0;
+  let last = &typable.as_ref().unwrap().1;
 
-  if typeable.0.is_none() {
+  if inference_result_opt.is_none() {
     return None;
   }
 
-  let definition_node = &typeable.0.as_ref().unwrap().definition_location();
+  let inference_result = inference_result_opt.unwrap();
 
-  if definition_node.is_none() {
+  if let TypeInferenceResult::Undefinable(_) = inference_result {
+    if let Base::ExprNode(expr_node) = last {
+      let mut children_of_operations = vec![];
+
+      match expr_node.expr() {
+        Expr::Binary(_, Some(left), Some(right)) => {
+          children_of_operations.push(left);
+          children_of_operations.push(right);
+        }
+        Expr::Unary(_, Some(child)) => {
+          children_of_operations.push(child);
+        }
+        _ => {}
+      }
+
+      if !children_of_operations.is_empty() {
+        return children_of_operations
+          .iter()
+          .map(|child| {
+            let mut traversal_to_child = traversal_list.clone();
+            traversal_to_child.push(child.to_base_model());
+            find_missing_definitions(&traversal_to_child)
+          })
+          .collect::<Option<Vec<Vec<Diagnostic>>>>()
+          .and_then(|vecs| {
+            let mut diagnostics = vec![];
+            for mut v in vecs {
+              diagnostics.append(&mut v);
+            }
+            Some(diagnostics)
+          });
+      }
+    }
+
     return None;
   }
 
-  let definition_result = definition_node.as_ref().unwrap();
-
-  if definition_result.is_ok() {
-    return None;
+  if let TypeInferenceResult::Definable(_, Err(str)) = inference_result {
+    return Some(vec![Diagnostic {
+      range: Range {
+        start: to_position(last.span().0),
+        end: to_position(last.span().1),
+      },
+      severity: Some(DiagnosticSeverity::ERROR),
+      code: None,
+      code_description: None,
+      source: None,
+      message: str.to_owned(),
+      related_information: None,
+      tags: None,
+      data: None,
+    }]);
   }
 
-  let model = typeable.1;
-
-  let err_str = definition_result.as_ref().err().unwrap();
-
-  Some(vec![Diagnostic {
-    range: Range {
-      start: to_position(model.span().0),
-      end: to_position(model.span().1),
-    },
-    severity: Some(DiagnosticSeverity::ERROR),
-    code: None,
-    code_description: None,
-    source: None,
-    message: err_str.to_owned(),
-    related_information: None,
-    tags: None,
-    data: None,
-  }])
+  None
 }
 
 pub fn build_diagnostics(tree: &Tree, firestore_tree: &RulesTree) -> Vec<Diagnostic> {

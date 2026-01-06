@@ -457,8 +457,10 @@ fn parse_expr<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
 
   return match child.kind() {
     "ternary" => parse_ternary(child, source_bytes),
-    "conditional_or" | "conditional_and" | "relation" | "contains" | "addition"
-    | "multiplication" => parse_binary(child, source_bytes),
+    "conditional_or" | "conditional_and" | "relation" | "addition" | "multiplication" => {
+      parse_binary(child, source_bytes)
+    }
+    "contains" => parse_contains(child, source_bytes),
     "type_comparison" => parse_type_comparison(child, source_bytes),
     "unary" => parse_unary(child, source_bytes),
     "member" => parse_member(child, source_bytes),
@@ -611,12 +613,12 @@ fn parse_type_comparison<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<Expr
 fn parse_binary<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
   let children: Vec<Node<'b>> = sanitized_children!(node).collect();
 
-  if children.len() != 4 {
+  if children.len() != 3 {
     return None;
   }
 
   let operator1 = parse_expr(children[0], source_bytes);
-  let operator2 = parse_expr(children[3], source_bytes);
+  let operator2 = parse_expr(children[2], source_bytes);
 
   let op_node = children[1];
 
@@ -635,6 +637,25 @@ fn parse_binary<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
 
   let expr = Expr::Binary(
     operation.clone(),
+    operator1.map(Box::new),
+    operator2.map(Box::new),
+  );
+
+  Some(ExprNode::new(expr, node))
+}
+
+fn parse_contains<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
+  let children: Vec<Node<'b>> = sanitized_children!(node).collect();
+
+  if children.len() != 4 {
+    return None;
+  }
+
+  let operator1 = parse_expr(children[0], source_bytes);
+  let operator2 = parse_expr(children[3], source_bytes);
+
+  let expr = Expr::Binary(
+    Some(Operation::Contains),
     operator1.map(Box::new),
     operator2.map(Box::new),
   );

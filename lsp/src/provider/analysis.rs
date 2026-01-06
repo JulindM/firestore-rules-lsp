@@ -169,7 +169,7 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<Base<'a>>) -> Vec<Comp
     return vec![];
   }
 
-  let _type = typable.as_ref().unwrap().type_info().firebase_type();
+  let _type = typable.as_ref().unwrap().type_information().firebase_type();
 
   let properties = _type.properties();
   let props = properties.iter().map(|p| CompletionItem {
@@ -298,13 +298,23 @@ pub fn bfs_execute_at<'a, T>(
 pub fn get_hover_result<'a>(traversing_path: &Vec<Base<'a>>) -> Option<MarkupContent> {
   let hover_result = try_see_if_typable(traversing_path)
     .and_then(|res| res.0)
-    .and_then(|t| Some((t.type_info().firebase_type(), t.type_info().docstring())));
+    .and_then(|t| match t {
+      TypeInferenceResult::Definable(inferenced_type, Ok(_)) => {
+        Some((inferenced_type.firebase_type(), inferenced_type.docstring()))
+      }
+      TypeInferenceResult::Undefinable(inferenced_type) => {
+        Some((inferenced_type.firebase_type(), inferenced_type.docstring()))
+      }
+      _ => None,
+    });
 
   if hover_result.is_none() {
     return None;
   }
 
   let (fir_type, docstr) = hover_result.unwrap();
+
+  eprintln!("{}", docstr.unwrap_or("No docstring"));
 
   Some(MarkupContent {
     kind: MarkupKind::Markdown,

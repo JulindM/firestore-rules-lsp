@@ -9,7 +9,7 @@ use tree_sitter::{Parser, Tree};
 use crate::{
   StartUpType,
   parser::{
-    base::{RulesTree, ServiceBody},
+    base::{RulesTree, ServiceBody, TypeInferenceResult},
     evaluation::evaluate_tree,
   },
   provider::{
@@ -251,8 +251,8 @@ fn handle_go_to_definition<'a>(
 
   let hit = try_see_if_typable(&traversal);
 
-  let message = match hit.and_then(|h| h.0.and_then(|d| d.definition_location())) {
-    Some(Ok(definition_span)) => {
+  let message = match hit.and_then(|h| h.0) {
+    Some(TypeInferenceResult::Definable(_, Ok(definition_span))) => {
       let range = Range {
         start: to_position(definition_span.0),
         end: to_position(definition_span.1),

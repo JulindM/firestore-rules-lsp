@@ -199,49 +199,19 @@ impl FirebaseTypeInformation {
 type DefinitionLocation = Result<(Point, Point), String>;
 
 #[derive(Debug, Clone)]
-pub struct TypeInferenceResult {
-  type_info: FirebaseTypeInformation,
-  definition_location: Option<DefinitionLocation>,
-  inference_hints: Option<String>,
+pub enum TypeInferenceResult {
+  Definable(FirebaseTypeInformation, DefinitionLocation),
+  Undefinable(FirebaseTypeInformation),
+  UndefinableWithHints(FirebaseTypeInformation, String),
 }
 
 impl TypeInferenceResult {
-  pub fn new_definable(
-    type_info: FirebaseTypeInformation,
-    definition_locatin: DefinitionLocation,
-  ) -> Self {
-    Self {
-      type_info,
-      definition_location: Some(definition_locatin),
-      inference_hints: None,
+  pub fn type_information(&self) -> &FirebaseTypeInformation {
+    match self {
+      TypeInferenceResult::Definable(t, _) => t,
+      TypeInferenceResult::Undefinable(t) => t,
+      TypeInferenceResult::UndefinableWithHints(t, _) => t,
     }
-  }
-
-  pub fn new_undefinable(type_info: FirebaseTypeInformation) -> Self {
-    Self {
-      type_info,
-      definition_location: None,
-      inference_hints: None,
-    }
-  }
-
-  pub fn new_undefinable_with_hints(
-    type_info: FirebaseTypeInformation,
-    inference_hints: &str,
-  ) -> Self {
-    Self {
-      type_info,
-      definition_location: None,
-      inference_hints: Some(inference_hints.to_owned()),
-    }
-  }
-
-  pub fn type_info(&self) -> &FirebaseTypeInformation {
-    &self.type_info
-  }
-
-  pub fn definition_location(&self) -> Option<&Result<(Point, Point), String>> {
-    self.definition_location.as_ref()
   }
 }
 
@@ -347,10 +317,9 @@ impl Function {
 
     let ret_inference = ret.inferred_type(&traversal_for_ret);
 
-    Some(TypeInferenceResult::new_undefinable(
+    Some(TypeInferenceResult::Undefinable(
       ret_inference
-        .map(|v| v.type_info())
-        .map(|fir_type| FirebaseTypeInformation::new_undocumented(fir_type.firebase_type()))
+        .map(|v| v.type_information().clone())
         .unwrap_or(FirebaseTypeInformation::new_undocumented(FirebaseType::Any)),
     ))
   }
@@ -486,10 +455,9 @@ impl VariableDefinition {
       .unwrap()
       .inferred_type(&traversing_path_to_expr);
 
-    Some(TypeInferenceResult::new_undefinable(
+    Some(TypeInferenceResult::Undefinable(
       definition_ret
-        .map(|v| v.type_info())
-        .map(|fir_type| FirebaseTypeInformation::new_undocumented(fir_type.firebase_type()))
+        .map(|v| v.type_information().clone())
         .unwrap_or(FirebaseTypeInformation::new_undocumented(FirebaseType::Any)),
     ))
   }
@@ -1004,39 +972,39 @@ impl ExprNode {
       Expr::MemberVariable(ident) => infer_member_variable_type(&traversing_path, ident),
       Expr::MemberFunction(ident, _) => infer_member_function_type(&traversing_path, ident),
       Expr::FunctionCall(ident, _) => find_function_type(ident, &traversing_path),
-      Expr::Literal(literal) => Some(TypeInferenceResult::new_undefinable(
+      Expr::Literal(literal) => Some(TypeInferenceResult::Undefinable(
         FirebaseTypeInformation::new_undocumented(literal.firebase_type().get()),
       )),
       Expr::Variable(ident) => find_variable_type(ident, &traversing_path),
-      Expr::List(_) => Some(TypeInferenceResult::new_undefinable(
+      Expr::List(_) => Some(TypeInferenceResult::Undefinable(
         FirebaseTypeInformation::new_undocumented(FirebaseType::List),
       )),
       Expr::Unary(op, _) => match op {
-        Some(Operation::Negation) => Some(TypeInferenceResult::new_undefinable(
+        Some(Operation::Negation) => Some(TypeInferenceResult::Undefinable(
           FirebaseTypeInformation::new_undocumented(FirebaseType::Boolean),
         )),
-        _ => Some(TypeInferenceResult::new_undefinable_with_hints(
+        _ => Some(TypeInferenceResult::UndefinableWithHints(
           FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
-          "Only negation is a valid unary operation",
+          "Only negation is a valid unary operation".to_owned(),
         )),
       },
       Expr::Binary(op, _, _) => match op {
         None => None,
-        Some(Operation::And) | Some(Operation::Or) | Some(Operation::Relation) => {
-          Some(TypeInferenceResult::new_undefinable(
-            FirebaseTypeInformation::new_undocumented(FirebaseType::Boolean),
-          ))
-        }
+        Some(Operation::And)
+        | Some(Operation::Or)
+        | Some(Operation::Relation)
+        | Some(Operation::Contains) => Some(TypeInferenceResult::UndefinableWithHints(
+          FirebaseTypeInformation::new_undocumented(FirebaseType::Boolean),
+          //TODO Hints when bad binary operators re used
+          "".to_owned(),
+        )),
         Some(Operation::Addition)
         | Some(Operation::Multiplication)
         | Some(Operation::Division)
         | Some(Operation::Substraction)
         | Some(Operation::Modulo)
-        | Some(Operation::Negation) => Some(TypeInferenceResult::new_undefinable(
+        | Some(Operation::Negation) => Some(TypeInferenceResult::Undefinable(
           FirebaseTypeInformation::new_undocumented(FirebaseType::Number),
-        )),
-        Some(Operation::Contains) => Some(TypeInferenceResult::new_undefinable(
-          FirebaseTypeInformation::new_undocumented(FirebaseType::Boolean),
         )),
       },
       Expr::Ternary(_, expr1, expr2) => {
@@ -1048,15 +1016,16 @@ impl ExprNode {
           .and_then(|e| e.inferred_type(&traversing_path).clone());
 
         if t1.is_some() && t2.is_some() {
-          let t1_type = t1.unwrap().type_info();
-          let t2_type = t2.unwrap().type_info();
+          let t1_type = t1.unwrap().type_information();
+          let t2_type = t2.unwrap().type_information();
           if t1_type == t2_type {
-            return Some(TypeInferenceResult::new_undefinable(t1_type.to_owned()));
+            return Some(TypeInferenceResult::Undefinable(t1_type.to_owned()));
           }
         }
 
-        Some(TypeInferenceResult::new_undefinable(
+        Some(TypeInferenceResult::UndefinableWithHints(
           FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
+          "Ternary branches have different types".to_owned(),
         ))
       }
       Expr::Indexing(indexable, _) => {
@@ -1067,7 +1036,7 @@ impl ExprNode {
         match indexable.as_ref().unwrap().expr() {
           Expr::List(elements) | Expr::Map(elements) => {
             if elements.is_empty() {
-              return Some(TypeInferenceResult::new_undefinable(
+              return Some(TypeInferenceResult::Undefinable(
                 FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
               ));
             }
@@ -1075,14 +1044,14 @@ impl ExprNode {
             let first_type = elements[0]
               .inferred_type(&traversing_path)
               .unwrap()
-              .type_info();
+              .type_information();
 
             let all_types_whilemapped = elements.iter().map_while(|el| {
               let el_type = el
                 .inferred_type(&traversing_path)
                 .as_ref()
                 .unwrap()
-                .type_info();
+                .type_information();
 
               if el_type == first_type {
                 Some(true)
@@ -1092,10 +1061,10 @@ impl ExprNode {
             });
 
             if all_types_whilemapped.count() == elements.len() {
-              return Some(TypeInferenceResult::new_undefinable(first_type.to_owned()));
+              return Some(TypeInferenceResult::Undefinable(first_type.to_owned()));
             }
 
-            Some(TypeInferenceResult::new_undefinable(
+            Some(TypeInferenceResult::Undefinable(
               FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
             ))
           }
@@ -1104,7 +1073,7 @@ impl ExprNode {
           _ => None,
         }
       }
-      Expr::Map(_) => Some(TypeInferenceResult::new_undefinable(
+      Expr::Map(_) => Some(TypeInferenceResult::Undefinable(
         FirebaseTypeInformation::new_undocumented(FirebaseType::Map),
       )),
       Expr::MapEntry(_, val) => {
@@ -1118,7 +1087,7 @@ impl ExprNode {
           .inferred_type(traversing_path)
           .cloned()
       }
-      Expr::Path(_) => Some(TypeInferenceResult::new_undefinable(
+      Expr::Path(_) => Some(TypeInferenceResult::Undefinable(
         FirebaseTypeInformation::new_undocumented(FirebaseType::Path),
       )),
       Expr::ExprGroup(expr) => {
@@ -1132,10 +1101,10 @@ impl ExprNode {
           .inferred_type(traversing_path)
           .cloned()
       }
-      Expr::TypeComparison(_) => Some(TypeInferenceResult::new_undefinable(
+      Expr::TypeComparison(_) => Some(TypeInferenceResult::Undefinable(
         FirebaseTypeInformation::new_undocumented(FirebaseType::Boolean),
       )),
-      Expr::Range(_, _) => Some(TypeInferenceResult::new_undefinable(
+      Expr::Range(_, _) => Some(TypeInferenceResult::Undefinable(
         FirebaseTypeInformation::new_undocumented(FirebaseType::List),
       )),
     }
@@ -1156,7 +1125,7 @@ fn find_variable_type<'a>(
     .unwrap_or(false);
 
   if is_defining_itself {
-    return Some(TypeInferenceResult::new_definable(
+    return Some(TypeInferenceResult::Definable(
       FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
       Err(format!("Circular definition for {}", ident.value())),
     ));
@@ -1181,9 +1150,9 @@ fn find_variable_type<'a>(
       .unwrap()
       .definition()
       .and_then(|def| def.inferred_type(&traversing_path).as_ref().cloned())
-      .and_then(|res| Some(res.type_info.clone()));
+      .and_then(|res| Some(res.type_information().clone()));
 
-    return Some(TypeInferenceResult::new_definable(
+    return Some(TypeInferenceResult::Definable(
       variable_type.unwrap_or(FirebaseTypeInformation::new_undocumented(FirebaseType::Any)),
       Ok(var_def.unwrap().to_base_model().span()),
     ));
@@ -1204,7 +1173,7 @@ fn find_variable_type<'a>(
     });
 
   if var_def_in_params.is_some() {
-    return Some(TypeInferenceResult::new_definable(
+    return Some(TypeInferenceResult::Definable(
       FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
       Ok(var_def_in_params.unwrap().to_base_model().span()),
     ));
@@ -1226,7 +1195,7 @@ fn find_variable_type<'a>(
     });
 
   if var_def_in_match_path.is_some() {
-    return Some(TypeInferenceResult::new_definable(
+    return Some(TypeInferenceResult::Definable(
       FirebaseTypeInformation::new_undocumented(FirebaseType::String),
       Ok(var_def_in_match_path.unwrap().to_base_model().span()),
     ));
@@ -1235,12 +1204,12 @@ fn find_variable_type<'a>(
   let namespace_reserved = namespace_reserved_variable(ident.value());
 
   if namespace_reserved.is_some() {
-    return Some(TypeInferenceResult::new_undefinable(
+    return Some(TypeInferenceResult::Undefinable(
       namespace_reserved.unwrap(),
     ));
   }
 
-  Some(TypeInferenceResult::new_definable(
+  Some(TypeInferenceResult::Definable(
     FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
     Err(format!(
       "No variable definition found for {}",
@@ -1263,7 +1232,7 @@ fn find_function_type<'a>(
     .unwrap_or(false);
 
   if is_defining_itself {
-    return Some(TypeInferenceResult::new_definable(
+    return Some(TypeInferenceResult::Definable(
       FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
       Err(format!("Circular definition for {}", ident.value())),
     ));
@@ -1309,9 +1278,9 @@ fn find_function_type<'a>(
     let function_type = func
       .return_type(&traversal_to_match_body)
       .as_ref()
-      .and_then(|res| Some(res.type_info().clone()));
+      .and_then(|res| Some(res.type_information().clone()));
 
-    return Some(TypeInferenceResult::new_definable(
+    return Some(TypeInferenceResult::Definable(
       function_type.unwrap_or(FirebaseTypeInformation::new_undocumented(FirebaseType::Any)),
       Ok(func.span()),
     ));
@@ -1320,12 +1289,12 @@ fn find_function_type<'a>(
   let namespace_reserved = namespace_reserved_function(ident.value());
 
   if namespace_reserved.is_some() {
-    return Some(TypeInferenceResult::new_undefinable(
+    return Some(TypeInferenceResult::Undefinable(
       namespace_reserved.unwrap(),
     ));
   }
 
-  Some(TypeInferenceResult::new_definable(
+  Some(TypeInferenceResult::Definable(
     FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
     Err(format!(
       "No function definition found for {}",
@@ -1349,7 +1318,7 @@ fn infer_member_function_type<'a>(
   let parent_type = obj_exprnode
     .inferred_type(&traversing_path)
     .as_ref()
-    .and_then(|res| Some(res.type_info()));
+    .and_then(|res| Some(res.type_information()));
 
   if parent_type.is_none() {
     return None;
@@ -1361,7 +1330,7 @@ fn infer_member_function_type<'a>(
     return None;
   }
 
-  Some(TypeInferenceResult::new_undefinable(
+  Some(TypeInferenceResult::Undefinable(
     inferred_function_type.unwrap(),
   ))
 }
@@ -1381,7 +1350,7 @@ fn infer_member_variable_type<'a>(
   let parent_type = obj_exprnode
     .inferred_type(&traversing_path)
     .as_ref()
-    .and_then(|res| Some(res.type_info()));
+    .and_then(|res| Some(res.type_information()));
 
   if parent_type.is_none() {
     return None;
@@ -1393,7 +1362,7 @@ fn infer_member_variable_type<'a>(
     return None;
   }
 
-  Some(TypeInferenceResult::new_undefinable(
+  Some(TypeInferenceResult::Undefinable(
     inferred_field_type.unwrap(),
   ))
 }
