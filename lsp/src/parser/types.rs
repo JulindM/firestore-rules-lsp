@@ -27,11 +27,11 @@ pub enum FirebaseType {
   Timestamp,
   Null,
   Any,
-  hashing_module,
-  latlng_module,
-  math_module,
-  timestamp_module,
-  duration_module,
+  HashingModule,
+  LatLngModule,
+  MathModule,
+  TimestampModule,
+  DurationModule,
 }
 
 pub trait FirebaseTypeTrait {
@@ -208,7 +208,7 @@ impl FirebaseTypeTrait for FirebaseType {
     FirebaseTypeInformation,
   )> {
     match self {
-      FirebaseType::math_module => {
+      FirebaseType::MathModule => {
         vec![
           (
             "ceil",
@@ -319,7 +319,7 @@ impl FirebaseTypeTrait for FirebaseType {
           ),
         ]
       }
-      FirebaseType::timestamp_module => {
+      FirebaseType::TimestampModule => {
         vec![
           (
             "date",
@@ -876,7 +876,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
       ],
       FirebaseType::Null => vec![],
-      FirebaseType::hashing_module => vec![
+      FirebaseType::HashingModule => vec![
         (
           "crc32",
           vec![FunctionParameter::new(
@@ -934,7 +934,7 @@ impl FirebaseTypeTrait for FirebaseType {
           ),
         ),
       ],
-      FirebaseType::latlng_module => vec![(
+      FirebaseType::LatLngModule => vec![(
         "value",
         vec![
           FunctionParameter::new(
@@ -957,7 +957,7 @@ impl FirebaseTypeTrait for FirebaseType {
           "Create a LatLng from latitude and longitude values.",
         ),
       )],
-      FirebaseType::duration_module => vec![
+      FirebaseType::DurationModule => vec![
         (
           "abs",
           vec![FunctionParameter::new(
@@ -1131,19 +1131,19 @@ impl FirebaseTypeTrait for FirebaseType {
       FirebaseType::Null => {
         "`Null`\n\nA null value, representing the absence of a value.\n\nFor more information, see: [docs/reference/rules/rules.Null](https://firebase.google.com/docs/reference/rules/rules.Null)."
       }
-      FirebaseType::hashing_module => {
+      FirebaseType::HashingModule => {
         "`hashing`\n\nA module providing hashing functions for various algorithms.\n\nFor more information, see: [docs/reference/rules/rules.hashing](https://firebase.google.com/docs/reference/rules/rules.hashing)."
       }
-      FirebaseType::latlng_module => {
+      FirebaseType::LatLngModule => {
         "`latlng`\n\nA module providing functions for geographical calculations using latitude and longitude.\n\nFor more information, see: [docs/reference/rules/rules.latlng](https://firebase.google.com/docs/reference/rules/rules.latlng)."
       }
-      FirebaseType::math_module => {
+      FirebaseType::MathModule => {
         "`math`\n\nA module providing mathematical functions and constants.\n\nFor more information, see: [docs/reference/rules/rules.math](https://firebase.google.com/docs/reference/rules/rules.math)."
       }
-      FirebaseType::timestamp_module => {
+      FirebaseType::TimestampModule => {
         "`timestamp`\n\nA module providing functions for creating and manipulating timestamps.\n\nFor more information, see: [docs/reference/rules/rules.timestamp](https://firebase.google.com/docs/reference/rules/rules.timestamp)."
       }
-      FirebaseType::duration_module => {
+      FirebaseType::DurationModule => {
         "`duration`\n\nA module providing functions for creating and manipulating durations.\n\nFor more information, see: [docs/reference/rules/rules.duration](https://firebase.google.com/docs/reference/rules/rules.duration)."
       }
       FirebaseType::Any => "`Any`",
@@ -1163,40 +1163,40 @@ pub static GLOBAL_VARIABLES: LazyLock<[(&str, FirebaseTypeInformation, VariableT
       (
         "duration",
         FirebaseTypeInformation::new_documented(
-          FirebaseType::duration_module,
-          FirebaseType::duration_module.docstring(),
+          FirebaseType::DurationModule,
+          FirebaseType::DurationModule.docstring(),
         ),
         VariableType::Module,
       ),
       (
         "hashing",
         FirebaseTypeInformation::new_documented(
-          FirebaseType::hashing_module,
-          FirebaseType::hashing_module.docstring(),
+          FirebaseType::HashingModule,
+          FirebaseType::HashingModule.docstring(),
         ),
         VariableType::Module,
       ),
       (
         "latlng",
         FirebaseTypeInformation::new_documented(
-          FirebaseType::latlng_module,
-          FirebaseType::latlng_module.docstring(),
+          FirebaseType::LatLngModule,
+          FirebaseType::LatLngModule.docstring(),
         ),
         VariableType::Module,
       ),
       (
         "math",
         FirebaseTypeInformation::new_documented(
-          FirebaseType::math_module,
-          FirebaseType::math_module.docstring(),
+          FirebaseType::MathModule,
+          FirebaseType::MathModule.docstring(),
         ),
         VariableType::Module,
       ),
       (
         "timestamp",
         FirebaseTypeInformation::new_documented(
-          FirebaseType::timestamp_module,
-          FirebaseType::timestamp_module.docstring(),
+          FirebaseType::TimestampModule,
+          FirebaseType::TimestampModule.docstring(),
         ),
         VariableType::Module,
       ),

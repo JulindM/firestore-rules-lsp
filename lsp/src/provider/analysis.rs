@@ -22,8 +22,8 @@ pub fn to_position(point: Point) -> Position {
 }
 
 pub fn try_see_if_typable<'a>(
-  traversing_path: &Vec<BaseModel<'a>>,
-) -> Option<(Option<&'a TypeInferenceResult>, BaseModel<'a>)> {
+  traversing_path: &Vec<Base<'a>>,
+) -> Option<(Option<&'a TypeInferenceResult>, Base<'a>)> {
   if traversing_path.is_empty() {
     return None;
   }
@@ -38,9 +38,9 @@ pub fn try_see_if_typable<'a>(
   let last = last_opt.unwrap();
 
   let inference_info = match &last {
-    BaseModel::ExprNode(expr) => expr.inferred_type(&traversal_not_last),
-    BaseModel::Function(fun) => fun.return_type(&traversal_not_last),
-    BaseModel::VariableDefinition(vd) => vd.variable_type(&traversal_not_last),
+    Base::ExprNode(expr) => expr.inferred_type(&traversal_not_last),
+    Base::Function(fun) => fun.return_type(&traversal_not_last),
+    Base::VariableDefinition(vd) => vd.variable_type(&traversal_not_last),
     _ => None,
   };
 
@@ -50,7 +50,7 @@ pub fn try_see_if_typable<'a>(
 pub fn get_path_traversal<'a>(
   position: Position,
   starting: &'a dyn HasChildren<'a>,
-) -> Vec<BaseModel<'a>> {
+) -> Vec<Base<'a>> {
   let point = to_point(position);
 
   if !starting.contains(point) {
@@ -74,9 +74,7 @@ pub fn get_path_traversal<'a>(
   res
 }
 
-pub fn generate_scoped_autocompletions<'a>(
-  traversing_path: &Vec<BaseModel<'a>>,
-) -> Vec<CompletionItem> {
+pub fn generate_scoped_autocompletions<'a>(traversing_path: &Vec<Base<'a>>) -> Vec<CompletionItem> {
   let current_scope_variables = get_scoped_variables(traversing_path);
   let current_scope_functions = get_scoped_functions(traversing_path);
   let firestore_reserved_keywords = SPECIAL_KEYWORDS;
@@ -117,7 +115,7 @@ pub fn generate_scoped_autocompletions<'a>(
   );
 }
 
-pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec<CompletionItem> {
+pub fn get_possible_completions<'a>(traversing_path: &Vec<Base<'a>>) -> Vec<CompletionItem> {
   let last_two = traversing_path.last_chunk::<2>();
 
   if last_two.is_none() {
@@ -222,14 +220,12 @@ pub fn get_possible_completions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec
   return Vec::from_iter(props.chain(methods));
 }
 
-fn get_scoped_variables<'a>(
-  traversing_path: &Vec<BaseModel<'a>>,
-) -> Vec<(String, bool, VariableType)> {
+fn get_scoped_variables<'a>(traversing_path: &Vec<Base<'a>>) -> Vec<(String, bool, VariableType)> {
   let mut scoped_vars = vec![];
 
   for node in traversing_path.iter().rev() {
     match node {
-      BaseModel::FunctionBody(fun) => scoped_vars.extend(
+      Base::FunctionBody(fun) => scoped_vars.extend(
         fun
           .variable_defs()
           .iter()
@@ -248,12 +244,12 @@ fn get_scoped_variables<'a>(
   scoped_vars
 }
 
-fn get_scoped_functions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec<(String, bool)> {
+fn get_scoped_functions<'a>(traversing_path: &Vec<Base<'a>>) -> Vec<(String, bool)> {
   let mut scoped_funs: Vec<(String, bool)> = vec![];
 
   for node in traversing_path.iter().rev() {
     match node {
-      BaseModel::MatchBody(body) => scoped_funs.extend(
+      Base::MatchBody(body) => scoped_funs.extend(
         body
           .functions()
           .iter()
@@ -268,11 +264,11 @@ fn get_scoped_functions<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Vec<(String
   scoped_funs
 }
 
-type TraversableConsuming<'a, T> = fn(&Vec<BaseModel<'a>>) -> Option<T>;
+type TraversableConsuming<'a, T> = fn(&Vec<Base<'a>>) -> Option<Vec<T>>;
 
 pub fn bfs_execute_at<'a, T>(
   nestable: &'a dyn HasChildren<'a>,
-  existing_traversal: &Vec<BaseModel<'a>>,
+  existing_traversal: &Vec<Base<'a>>,
   consumers: &Vec<TraversableConsuming<'a, T>>,
 ) -> Vec<T> {
   let mut curr_traversal = existing_traversal.clone();
@@ -284,7 +280,7 @@ pub fn bfs_execute_at<'a, T>(
   consumers.iter().for_each(|consumer| {
     let result = consumer(&curr_traversal);
     if result.is_some() {
-      curr_diagnostics.push(result.unwrap());
+      curr_diagnostics.append(result.unwrap().as_mut());
     }
   });
 
@@ -299,7 +295,7 @@ pub fn bfs_execute_at<'a, T>(
   curr_diagnostics
 }
 
-pub fn get_hover_result<'a>(traversing_path: &Vec<BaseModel<'a>>) -> Option<MarkupContent> {
+pub fn get_hover_result<'a>(traversing_path: &Vec<Base<'a>>) -> Option<MarkupContent> {
   let hover_result = try_see_if_typable(traversing_path)
     .and_then(|res| res.0)
     .and_then(|t| Some((t.type_info().firebase_type(), t.type_info().docstring())));

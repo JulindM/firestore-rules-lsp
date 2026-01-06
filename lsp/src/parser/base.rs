@@ -28,14 +28,14 @@ macro_rules! bm_contains(
 
 macro_rules! bm_to_base_model(
   ($clazz:ident) => (
-    impl ToBaseModel for $clazz {
-      fn to_base_model<'a>(&'a self) -> BaseModel<'a>{
-        BaseModel::$clazz(&self)
+    impl ToBase for $clazz {
+      fn to_base_model<'a>(&'a self) -> Base<'a>{
+        Base::$clazz(&self)
       }
     }
 ));
 
-pub trait HasChildren<'a>: Contains + ToBaseModel + Debug {
+pub trait HasChildren<'a>: Contains + ToBase + Debug {
   fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>>;
 }
 
@@ -43,12 +43,12 @@ pub trait Contains {
   fn contains<'a>(&'a self, p: Point) -> bool;
 }
 
-pub trait ToBaseModel: Contains {
-  fn to_base_model<'a>(&'a self) -> BaseModel<'a>;
+pub trait ToBase: Contains {
+  fn to_base_model<'a>(&'a self) -> Base<'a>;
 }
 
 #[derive(Clone, Display)]
-pub enum BaseModel<'a> {
+pub enum Base<'a> {
   Function(&'a Function),
   FunctionBody(&'a FunctionBody),
   Rule(&'a Rule),
@@ -65,34 +65,34 @@ pub enum BaseModel<'a> {
   Method(&'a Method),
 }
 
-impl<'a> BaseModel<'a> {
+impl<'a> Base<'a> {
   pub fn span(&self) -> (Point, Point) {
     match self {
-      BaseModel::Function(f) => f.span(),
-      BaseModel::FunctionBody(fb) => fb.span(),
-      BaseModel::Rule(r) => r.span(),
-      BaseModel::VariableDefinition(vd) => vd.span(),
-      BaseModel::MatchPath(mp) => mp.span(),
-      BaseModel::Match(m) => m.span(),
-      BaseModel::MatchBody(mb) => mb.span(),
-      BaseModel::ExprNode(en) => en.span(),
-      BaseModel::Identifier(v) => v.span(),
-      BaseModel::Literal(l) => l.span(),
-      BaseModel::MatchPathPart(mpp) => mpp.span(),
-      BaseModel::Method(m) => m.span(),
-      BaseModel::ServiceBody(body) => body.span(),
+      Base::Function(f) => f.span(),
+      Base::FunctionBody(fb) => fb.span(),
+      Base::Rule(r) => r.span(),
+      Base::VariableDefinition(vd) => vd.span(),
+      Base::MatchPath(mp) => mp.span(),
+      Base::Match(m) => m.span(),
+      Base::MatchBody(mb) => mb.span(),
+      Base::ExprNode(en) => en.span(),
+      Base::Identifier(v) => v.span(),
+      Base::Literal(l) => l.span(),
+      Base::MatchPathPart(mpp) => mpp.span(),
+      Base::Method(m) => m.span(),
+      Base::ServiceBody(body) => body.span(),
     }
   }
 
   pub fn as_expr_node(&self) -> Option<&'a ExprNode> {
     match self {
-      BaseModel::ExprNode(en) => Some(en),
+      Base::ExprNode(en) => Some(en),
       _ => None,
     }
   }
 }
 
-impl<'a> Debug for BaseModel<'a> {
+impl<'a> Debug for Base<'a> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::Function(_) => f.debug_tuple("Function").finish(),
@@ -201,7 +201,8 @@ type DefinitionLocation = Result<(Point, Point), String>;
 #[derive(Debug, Clone)]
 pub struct TypeInferenceResult {
   type_info: FirebaseTypeInformation,
-  definition_locatin: Option<DefinitionLocation>,
+  definition_location: Option<DefinitionLocation>,
+  inference_hints: Option<String>,
 }
 
 impl TypeInferenceResult {
@@ -211,14 +212,27 @@ impl TypeInferenceResult {
   ) -> Self {
     Self {
       type_info,
-      definition_locatin: Some(definition_locatin),
+      definition_location: Some(definition_locatin),
+      inference_hints: None,
     }
   }
 
   pub fn new_undefinable(type_info: FirebaseTypeInformation) -> Self {
     Self {
       type_info,
-      definition_locatin: None,
+      definition_location: None,
+      inference_hints: None,
+    }
+  }
+
+  pub fn new_undefinable_with_hints(
+    type_info: FirebaseTypeInformation,
+    inference_hints: &str,
+  ) -> Self {
+    Self {
+      type_info,
+      definition_location: None,
+      inference_hints: Some(inference_hints.to_owned()),
     }
   }
 
@@ -227,7 +241,7 @@ impl TypeInferenceResult {
   }
 
   pub fn definition_location(&self) -> Option<&Result<(Point, Point), String>> {
-    self.definition_locatin.as_ref()
+    self.definition_location.as_ref()
   }
 }
 
@@ -299,11 +313,11 @@ impl Function {
 
   /// Function return type taken from the return statement in the body
   /// # Arguments
-  /// * `traversal_to_match_body` - The path of BaseModels traversed to reach
+  /// * `traversal_to_match_body` - The path of Bases traversed to reach
   /// this Function, without including the Function itself!
   pub fn return_type<'a>(
     &self,
-    traversal_to_match_body: &Vec<BaseModel<'a>>,
+    traversal_to_match_body: &Vec<Base<'a>>,
   ) -> Option<&TypeInferenceResult> {
     self
       .return_type_cache
@@ -313,7 +327,7 @@ impl Function {
 
   fn calculate_return_type<'a>(
     &self,
-    traversal_to_match_body: &Vec<BaseModel<'a>>,
+    traversal_to_match_body: &Vec<Base<'a>>,
   ) -> Option<TypeInferenceResult> {
     if self.body().is_none() {
       return None;
@@ -446,12 +460,9 @@ impl VariableDefinition {
 
   /// Variable type taken from the definition
   /// # Arguments
-  /// * `traversing_path` - The path of BaseModels traversed to reach this VariableDefinition,
+  /// * `traversing_path` - The path of Bases traversed to reach this VariableDefinition,
   /// without including this VariableDefinition itself!
-  pub fn variable_type<'a>(
-    &self,
-    traversing_path: &Vec<BaseModel<'a>>,
-  ) -> Option<&TypeInferenceResult> {
+  pub fn variable_type<'a>(&self, traversing_path: &Vec<Base<'a>>) -> Option<&TypeInferenceResult> {
     self
       .definition_type_cache
       .get_or_init(|| self.calculate_variable_definition_type(traversing_path))
@@ -460,7 +471,7 @@ impl VariableDefinition {
 
   pub fn calculate_variable_definition_type<'a>(
     &self,
-    traversing_path: &Vec<BaseModel<'a>>,
+    traversing_path: &Vec<Base<'a>>,
   ) -> Option<TypeInferenceResult> {
     if self.definition().is_none() {
       return None;
@@ -473,7 +484,7 @@ impl VariableDefinition {
       .definition()
       .as_ref()
       .unwrap()
-      .inferred_type(traversing_path);
+      .inferred_type(&traversing_path_to_expr);
 
     Some(TypeInferenceResult::new_undefinable(
       definition_ret
@@ -880,6 +891,7 @@ pub enum Operation {
   Or,
   Substraction,
   Modulo,
+  Contains,
 }
 
 #[derive(Debug, Clone, AsRefStr)]
@@ -950,12 +962,9 @@ impl ExprNode {
   }
 
   /// # Arguments
-  /// * `traversing_path` - The path of BaseModels traversed to reach this ExprNode,
+  /// * `traversing_path` - The path of Bases traversed to reach this ExprNode,
   /// without including this ExprNode itself!
-  pub fn inferred_type<'a>(
-    &self,
-    traversing_path: &Vec<BaseModel<'a>>,
-  ) -> Option<&TypeInferenceResult> {
+  pub fn inferred_type<'a>(&self, traversing_path: &Vec<Base<'a>>) -> Option<&TypeInferenceResult> {
     self
       .inferred_type_cache
       .get_or_init(|| self.calculate_inference(traversing_path))
@@ -964,7 +973,7 @@ impl ExprNode {
 
   fn calculate_inference<'a>(
     &'a self,
-    traversing_path: &Vec<BaseModel<'a>>,
+    traversing_path: &Vec<Base<'a>>,
   ) -> Option<TypeInferenceResult> {
     match &self.expr {
       Expr::Member(object, member) => {
@@ -1006,9 +1015,13 @@ impl ExprNode {
         Some(Operation::Negation) => Some(TypeInferenceResult::new_undefinable(
           FirebaseTypeInformation::new_undocumented(FirebaseType::Boolean),
         )),
-        _ => None,
+        _ => Some(TypeInferenceResult::new_undefinable_with_hints(
+          FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
+          "Only negation is a valid unary operation",
+        )),
       },
       Expr::Binary(op, _, _) => match op {
+        None => None,
         Some(Operation::And) | Some(Operation::Or) | Some(Operation::Relation) => {
           Some(TypeInferenceResult::new_undefinable(
             FirebaseTypeInformation::new_undocumented(FirebaseType::Boolean),
@@ -1018,10 +1031,13 @@ impl ExprNode {
         | Some(Operation::Multiplication)
         | Some(Operation::Division)
         | Some(Operation::Substraction)
-        | Some(Operation::Modulo) => Some(TypeInferenceResult::new_undefinable(
+        | Some(Operation::Modulo)
+        | Some(Operation::Negation) => Some(TypeInferenceResult::new_undefinable(
           FirebaseTypeInformation::new_undocumented(FirebaseType::Number),
         )),
-        _ => None,
+        Some(Operation::Contains) => Some(TypeInferenceResult::new_undefinable(
+          FirebaseTypeInformation::new_undocumented(FirebaseType::Boolean),
+        )),
       },
       Expr::Ternary(_, expr1, expr2) => {
         let t1 = expr1
@@ -1128,20 +1144,21 @@ impl ExprNode {
 
 fn find_variable_type<'a>(
   ident: &Identifier,
-  traversing_path: &Vec<BaseModel<'a>>,
+  traversing_path: &Vec<Base<'a>>,
 ) -> Option<TypeInferenceResult> {
   let is_defining_itself = traversing_path
     .iter()
     .rev()
     .find_map(|el| match el {
-      BaseModel::VariableDefinition(vd) => Some(vd.name() == ident.value()),
+      Base::VariableDefinition(vd) => Some(vd.name() == ident.value()),
       _ => None,
     })
     .unwrap_or(false);
 
   if is_defining_itself {
-    return Some(TypeInferenceResult::new_undefinable(
+    return Some(TypeInferenceResult::new_definable(
       FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
+      Err(format!("Circular definition for {}", ident.value())),
     ));
   }
 
@@ -1149,7 +1166,7 @@ fn find_variable_type<'a>(
     .iter()
     .rev()
     .find_map(|el| match el {
-      BaseModel::FunctionBody(body) => Some(body),
+      Base::FunctionBody(body) => Some(body),
       _ => None,
     })
     .and_then(|body| {
@@ -1176,7 +1193,7 @@ fn find_variable_type<'a>(
     .iter()
     .rev()
     .find_map(|el| match el {
-      BaseModel::Function(func) => Some(func),
+      Base::Function(func) => Some(func),
       _ => None,
     })
     .and_then(|func| {
@@ -1197,7 +1214,7 @@ fn find_variable_type<'a>(
     .iter()
     .rev()
     .filter_map(|el| match el {
-      BaseModel::Match(m) => Some(m),
+      Base::Match(m) => Some(m),
       _ => None,
     })
     .find_map(|m| {
@@ -1234,19 +1251,22 @@ fn find_variable_type<'a>(
 
 fn find_function_type<'a>(
   ident: &Identifier,
-  traversing_path: &Vec<BaseModel<'a>>,
+  traversing_path: &Vec<Base<'a>>,
 ) -> Option<TypeInferenceResult> {
   let is_defining_itself = traversing_path
     .iter()
     .rev()
     .find_map(|el| match el {
-      BaseModel::Function(f) => Some(f.name() == ident.value()),
+      Base::Function(f) => Some(f.name() == ident.value()),
       _ => None,
     })
     .unwrap_or(false);
 
   if is_defining_itself {
-    return None;
+    return Some(TypeInferenceResult::new_definable(
+      FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
+      Err(format!("Circular definition for {}", ident.value())),
+    ));
   }
 
   let function_def_opt = traversing_path
@@ -1254,7 +1274,7 @@ fn find_function_type<'a>(
     .enumerate()
     .rev()
     .find_map(|(i, el)| match el {
-      BaseModel::MatchBody(match_body) => {
+      Base::MatchBody(match_body) => {
         let body_fun_hit = match_body
           .functions()
           .iter()
@@ -1266,7 +1286,7 @@ fn find_function_type<'a>(
 
         None
       }
-      BaseModel::ServiceBody(service_body) => {
+      Base::ServiceBody(service_body) => {
         let body_fun_hit = service_body
           .functions()
           .iter()
@@ -1315,7 +1335,7 @@ fn find_function_type<'a>(
 }
 
 fn infer_member_function_type<'a>(
-  traversing_path: &Vec<BaseModel<'a>>,
+  traversing_path: &Vec<Base<'a>>,
   ident: &Identifier,
 ) -> Option<TypeInferenceResult> {
   let parent_object = direct_member_object_parent(traversing_path.clone());
@@ -1347,7 +1367,7 @@ fn infer_member_function_type<'a>(
 }
 
 fn infer_member_variable_type<'a>(
-  traversing_path: &Vec<BaseModel<'a>>,
+  traversing_path: &Vec<Base<'a>>,
   ident: &Identifier,
 ) -> Option<TypeInferenceResult> {
   let parent_object = direct_member_object_parent(traversing_path.clone());
@@ -1378,9 +1398,9 @@ fn infer_member_variable_type<'a>(
   ))
 }
 
-fn direct_member_object_parent<'a>(traversing_path: Vec<BaseModel<'_>>) -> Option<&Box<ExprNode>> {
+fn direct_member_object_parent<'a>(traversing_path: Vec<Base<'_>>) -> Option<&Box<ExprNode>> {
   traversing_path.last().and_then(|bm| match bm {
-    BaseModel::ExprNode(en) => match &en.expr {
+    Base::ExprNode(en) => match &en.expr {
       Expr::Member(obj, _) => obj.as_ref(),
       _ => None,
     },

@@ -78,7 +78,7 @@ fn is_parse_error<'a>(node: Node<'a>) -> Option<Node<'a>> {
   None
 }
 
-type Diagnoser = fn(&Vec<BaseModel<'_>>) -> Option<Diagnostic>;
+type Diagnoser = fn(&Vec<Base<'_>>) -> Option<Vec<Diagnostic>>;
 
 pub fn diagnose_linting_errors<'a>(tree: &'a RulesTree) -> Vec<Diagnostic> {
   if tree.body().is_none() || tree.service_type() != Some(&ServiceType::Firestore) {
@@ -93,7 +93,7 @@ pub fn diagnose_linting_errors<'a>(tree: &'a RulesTree) -> Vec<Diagnostic> {
   bfs_execute_at(body, &vec![], &diagnosers)
 }
 
-fn find_if_rule_expr_not_bool(traversal_list: &Vec<BaseModel<'_>>) -> Option<Diagnostic> {
+fn find_if_rule_expr_not_bool(traversal_list: &Vec<Base<'_>>) -> Option<Vec<Diagnostic>> {
   let last_node = traversal_list.last();
 
   if last_node.is_none() {
@@ -140,7 +140,7 @@ fn find_if_rule_expr_not_bool(traversal_list: &Vec<BaseModel<'_>>) -> Option<Dia
   }
 
   match node {
-    BaseModel::Rule(rule) => {
+    Base::Rule(rule) => {
       let expr_type = rule.condition();
 
       if expr_type.is_none() {
@@ -154,7 +154,7 @@ fn find_if_rule_expr_not_bool(traversal_list: &Vec<BaseModel<'_>>) -> Option<Dia
         .and_then(|v| Some(v.type_info().firebase_type()));
 
       if expr_type != Some(FirebaseType::Boolean) && expr_type != Some(FirebaseType::Any) {
-        return Some(gen_diagnostic(expr_type, expr.span()));
+        return Some(vec![gen_diagnostic(expr_type, expr.span())]);
       }
 
       None
@@ -163,7 +163,46 @@ fn find_if_rule_expr_not_bool(traversal_list: &Vec<BaseModel<'_>>) -> Option<Dia
   }
 }
 
-fn find_missing_definitions(traversal_list: &Vec<BaseModel<'_>>) -> Option<Diagnostic> {
+fn find_missing_definitions(traversal_list: &Vec<Base<'_>>) -> Option<Vec<Diagnostic>> {
+  let last = traversal_list.last();
+
+  if last.is_none() {
+    return None;
+  }
+
+  if let Base::ExprNode(expr_node) = last.unwrap() {
+    let mut children_of_operations = vec![];
+
+    match expr_node.expr() {
+      Expr::Binary(_, Some(left), Some(right)) => {
+        children_of_operations.push(left);
+        children_of_operations.push(right);
+      }
+      Expr::Unary(_, Some(child)) => {
+        children_of_operations.push(child);
+      }
+      _ => {}
+    }
+
+    if !children_of_operations.is_empty() {
+      return children_of_operations
+        .iter()
+        .map(|child| {
+          let mut traversal_to_child = traversal_list.clone();
+          traversal_to_child.push(child.to_base_model());
+          find_missing_definitions(&traversal_to_child)
+        })
+        .collect::<Option<Vec<Vec<Diagnostic>>>>()
+        .and_then(|vecs| {
+          let mut diagnostics = vec![];
+          for mut v in vecs {
+            diagnostics.append(&mut v);
+          }
+          Some(diagnostics)
+        });
+    }
+  }
+
   let typable = try_see_if_typable(traversal_list);
 
   if typable.is_none() {
@@ -192,7 +231,7 @@ fn find_missing_definitions(traversal_list: &Vec<BaseModel<'_>>) -> Option<Diagn
 
   let err_str = definition_result.as_ref().err().unwrap();
 
-  Some(Diagnostic {
+  Some(vec![Diagnostic {
     range: Range {
       start: to_position(model.span().0),
       end: to_position(model.span().1),
@@ -205,7 +244,7 @@ fn find_missing_definitions(traversal_list: &Vec<BaseModel<'_>>) -> Option<Diagn
     related_information: None,
     tags: None,
     data: None,
-  })
+  }])
 }
 
 pub fn build_diagnostics(tree: &Tree, firestore_tree: &RulesTree) -> Vec<Diagnostic> {
