@@ -50,6 +50,25 @@
     }
   },
   {
+    "type": "contains",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "direct_required_whitespace",
+          "named": true
+        },
+        {
+          "type": "expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "expr",
     "named": true,
     "fields": {},
@@ -67,6 +86,10 @@
         },
         {
           "type": "conditional_or",
+          "named": true
+        },
+        {
+          "type": "contains",
           "named": true
         },
         {
@@ -382,6 +405,10 @@
           "named": true
         },
         {
+          "type": "contains",
+          "named": true
+        },
+        {
           "type": "indexing",
           "named": true
         },
@@ -434,6 +461,10 @@
         },
         {
           "type": "conditional_or",
+          "named": true
+        },
+        {
+          "type": "contains",
           "named": true
         },
         {
@@ -723,10 +754,6 @@
       "multiple": true,
       "required": true,
       "types": [
-        {
-          "type": "direct_required_whitespace",
-          "named": true
-        },
         {
           "type": "expr",
           "named": true

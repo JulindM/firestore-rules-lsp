@@ -9,13 +9,13 @@ module.exports = grammar({
   rules: {
     source_file: ($) =>
       seq(
-        optional($.rules_version_def),
+        optional(seq($.rules_version_def, ";")),
         "service",
         $.service_type,
-        $.service_body,
+        $.service_body
       ),
 
-    rules_version_def: ($) => seq("rules_version", "=", $.string, ";"),
+    rules_version_def: ($) => seq("rules_version", "=", $.string),
 
     service_type: (_) => choice("cloud.firestore", "firebase.storage"),
 
@@ -36,21 +36,21 @@ module.exports = grammar({
           repeat(
             choice(
               alias($.unescaped_double_string_fragment, $.string_fragment),
-              $.escape_sequence,
-            ),
+              $.escape_sequence
+            )
           ),
-          '"',
+          '"'
         ),
         seq(
           "'",
           repeat(
             choice(
               alias($.unescaped_single_string_fragment, $.string_fragment),
-              $.escape_sequence,
-            ),
+              $.escape_sequence
+            )
           ),
-          "'",
-        ),
+          "'"
+        )
       ),
 
     unescaped_double_string_fragment: (_) =>
@@ -72,10 +72,10 @@ module.exports = grammar({
           $.function_calling_name,
           token.immediate("("),
           optional(
-            seq($.function_argument, repeat(seq(",", $.function_argument))),
+            seq($.function_argument, repeat(seq(",", $.function_argument)))
           ),
-          ")",
-        ),
+          ")"
+        )
       ),
 
     variable: ($) => $.identifier,
@@ -97,7 +97,7 @@ module.exports = grammar({
         $.function_call,
         $.expr_group,
         $.list,
-        $.map,
+        $.map
       ),
 
     range: (_) => seq(/\d+/, ":", "/d+/"),
@@ -109,8 +109,8 @@ module.exports = grammar({
           choice($.variable, $.expr_group, $.function_call, $.list, $.map),
           "[",
           choice($.expr, $.range),
-          "]",
-        ),
+          "]"
+        )
       ),
 
     field_indexing: ($) =>
@@ -120,8 +120,8 @@ module.exports = grammar({
           choice(choice($.variable, $.function_call)),
           "[",
           choice($.expr, $.range),
-          "]",
-        ),
+          "]"
+        )
       ),
 
     member_object: ($) => choice($.primary, $.member),
@@ -134,7 +134,7 @@ module.exports = grammar({
     unary: ($) =>
       prec.right(
         8,
-        choice(seq(repeat1("!"), $.expr), seq(repeat1("-"), $.expr)),
+        choice(seq(repeat1("!"), $.expr), seq(repeat1("-"), $.expr))
       ),
 
     multiplication: ($) =>
@@ -145,14 +145,11 @@ module.exports = grammar({
     relation: ($) =>
       prec.left(
         5,
-        seq(
-          $.expr,
-          choice(
-            seq(choice("<", "<=", ">=", ">", "==", "!="), $.expr),
-            seq("in", $.direct_required_whitespace, $.expr),
-          ),
-        ),
+        seq($.expr, seq(choice("<", "<=", ">=", ">", "==", "!="), $.expr))
       ),
+
+    contains: ($) =>
+      prec.left(5, seq($.expr, "in", $.direct_required_whitespace, $.expr)),
 
     direct_required_whitespace: (_) => token.immediate(choice(" ", "\n", "\r")),
 
@@ -168,7 +165,7 @@ module.exports = grammar({
         "timestamp",
         "duration",
         "path",
-        "latlng",
+        "latlng"
       ),
 
     type_comparison: ($) =>
@@ -186,13 +183,14 @@ module.exports = grammar({
         $.conditional_or,
         $.conditional_and,
         $.relation,
+        $.contains,
         $.type_comparison,
         $.addition,
         $.multiplication,
         $.unary,
         $.member,
         $.indexing,
-        $.primary,
+        $.primary
       ),
 
     path: ($) => repeat1(seq("/", $.path_segment)),
@@ -201,12 +199,17 @@ module.exports = grammar({
       choice($.path_part, seq("$", $.expr_group), seq("(", $.path_part, ")")),
 
     variable_def: ($) =>
-      seq("let", $.direct_required_whitespace, $.variable, "=", $.expr, ";"),
+      seq("let", $.direct_required_whitespace, $.variable, "=", $.expr),
 
-    fun_return: ($) => seq("return", $.direct_required_whitespace, $.expr, ";"),
+    fun_return: ($) => seq("return", $.direct_required_whitespace, $.expr),
 
     function_body: ($) =>
-      seq("{", repeat($.variable_def), optional($.fun_return), "}"),
+      seq(
+        "{",
+        repeat(seq($.variable_def, ";")),
+        optional(seq($.fun_return, ";")),
+        "}"
+      ),
 
     param_list: ($) => seq($.identifier, repeat(seq(",", $.identifier))),
 
@@ -218,7 +221,7 @@ module.exports = grammar({
         "(",
         optional($.param_list),
         ")",
-        $.function_body,
+        $.function_body
       ),
 
     path_part: (_) => /[_a-zA-Z0-9-][_a-zA-Z0-9\-]*/,
@@ -237,7 +240,7 @@ module.exports = grammar({
 
     match_path: ($) =>
       repeat1(
-        choice($.collection_path_seg, $.single_path_seg, $.multi_path_seg),
+        choice($.collection_path_seg, $.single_path_seg, $.multi_path_seg)
       ),
 
     method: (_) =>
@@ -247,17 +250,24 @@ module.exports = grammar({
       seq(
         "allow",
         seq($.direct_required_whitespace, $.method, repeat(seq(",", $.method))),
-        optional(seq(":", "if", $.direct_required_whitespace, $.expr)),
-        ";",
+        optional(seq(":", "if", $.direct_required_whitespace, $.expr))
       ),
 
     match_def: ($) =>
       seq("match", $.direct_required_whitespace, $.match_path, $.match_body),
 
     service_body: ($) =>
-      seq("{", repeat(choice($.function_def, $.match_def, $.rule_def)), "}"),
+      seq(
+        "{",
+        repeat(choice($.function_def, $.match_def, seq($.rule_def, ";"))),
+        "}"
+      ),
 
     match_body: ($) =>
-      seq("{", repeat(choice($.function_def, $.match_def, $.rule_def)), "}"),
+      seq(
+        "{",
+        repeat(choice($.function_def, $.match_def, seq($.rule_def, ";"))),
+        "}"
+      ),
   },
 });
