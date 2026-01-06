@@ -6,13 +6,6 @@ This LSP implementation is standalone and does not require the Firebase Admin SD
 
 ---
 
-### Overview
-
-The LSP is currently in alpha.
-
-> [!IMPORTANT]
-> The error diagnostics are somewhat wonky as the evaluation still needs further work to be 1:1 with the Firebase Admin SDK parser.
-
 ### Usage
 
 The server supports communicating over STDIO or TCP. Starting the server without any parameters will start it over STDIO.
