@@ -36,7 +36,7 @@ jobs:
           overwrite: true
 
   build_macos_intel:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
       - run: rustup update
