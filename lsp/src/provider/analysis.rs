@@ -1,6 +1,6 @@
 use lsp_types::{
-  CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Documentation, MarkupContent,
-  MarkupKind, Position,
+  CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Documentation, Location,
+  MarkupContent, MarkupKind, Position, Range, Uri,
 };
 
 use tree_sitter::Point;
@@ -244,6 +244,149 @@ fn get_scoped_variables<'a>(traversing_path: &Vec<Base<'a>>) -> Vec<(String, boo
   scoped_vars
 }
 
+enum ReferenceType {
+  FunctionCall(String),
+  VariableUse(String),
+}
+
+impl ReferenceType {
+  pub fn matches_node(self: &Self, node: &ExprNode) -> bool {
+    match self {
+      ReferenceType::FunctionCall(fun_name) => match node.expr() {
+        Expr::FunctionCall(ident, _) => ident.value() == fun_name,
+        _ => false,
+      },
+      ReferenceType::VariableUse(var_name) => match node.expr() {
+        Expr::Variable(ident) => ident.value() == var_name,
+        _ => false,
+      },
+    }
+  }
+}
+
+pub fn get_references<'a>(tree_file_uri: Uri, traversing_path: Vec<Base<'a>>) -> Vec<Location> {
+  let last = traversing_path.last();
+
+  if last.is_none() {
+    return vec![];
+  }
+
+  return match last.unwrap() {
+    Base::Function(func) => traversing_path
+      .iter()
+      .rev()
+      .find_map(|body| match body {
+        Base::MatchBody(body) => Some(*body as &dyn HasChildren<'a>),
+        Base::ServiceBody(body) => Some(*body as &dyn HasChildren<'a>),
+        _ => None,
+      })
+      .and_then(|body| {
+        Some(get_references_of(
+          tree_file_uri,
+          ReferenceType::FunctionCall(func.name().to_owned()),
+          body,
+        ))
+      })
+      .unwrap_or(vec![]),
+    Base::VariableDefinition(def) => traversing_path
+      .iter()
+      .rev()
+      .find_map(|body| match body {
+        Base::FunctionBody(fun_body) => Some(*fun_body),
+        _ => None,
+      })
+      .and_then(|func| {
+        Some(get_references_of(
+          tree_file_uri,
+          ReferenceType::VariableUse(def.name().to_owned()),
+          func,
+        ))
+      })
+      .unwrap_or(vec![]),
+    Base::ExprNode(node) => match node.expr() {
+      Expr::Variable(var) => node
+        .inferred_type(&traversing_path)
+        .and_then(|inf| match inf {
+          TypeInferenceResult::Undefinable(type_information) => {
+            match type_information.firebase_type() {
+              FirebaseType::Request
+              | FirebaseType::Resource
+              | FirebaseType::MathModule
+              | FirebaseType::TimestampModule
+              | FirebaseType::LatLngModule
+              | FirebaseType::DurationModule
+              | FirebaseType::HashingModule => traversing_path
+                .iter()
+                .rev()
+                .find_map(|body| match body {
+                  Base::ServiceBody(body) => Some(*body as &dyn HasChildren<'a>),
+                  _ => None,
+                })
+                .and_then(|body| {
+                  Some(get_references_of(
+                    tree_file_uri,
+                    ReferenceType::VariableUse(var.value().to_owned()),
+                    body,
+                  ))
+                }),
+              _ => None,
+            }
+          }
+          _ => None,
+        })
+        .unwrap_or(vec![]),
+      _ => vec![],
+    },
+    _ => vec![],
+  };
+}
+
+fn get_references_of<'a>(
+  tree_file_uri: Uri,
+  reference_type: ReferenceType,
+  scope_start: &'a dyn HasChildren<'a>,
+) -> Vec<Location> {
+  fn is_function_call<'a>(traversing_path: &Vec<Base<'a>>) -> Option<Vec<&'a ExprNode>> {
+    match traversing_path.last() {
+      Some(Base::ExprNode(node)) => match node.expr() {
+        Expr::FunctionCall(_, _) => Some(vec![node]),
+        _ => None,
+      },
+      _ => None,
+    }
+  }
+
+  fn is_variable<'a>(traversing_path: &Vec<Base<'a>>) -> Option<Vec<&'a ExprNode>> {
+    match traversing_path.last() {
+      Some(Base::ExprNode(node)) => match node.expr() {
+        Expr::Variable(_) => Some(vec![node]),
+        _ => None,
+      },
+      _ => None,
+    }
+  }
+
+  let consumers: Vec<TraversableConsuming<'a, &'a ExprNode>> = match reference_type {
+    ReferenceType::FunctionCall(_) => vec![is_function_call],
+    ReferenceType::VariableUse(_) => vec![is_variable],
+  };
+
+  let hits = bfs_execute_at(scope_start, &vec![], &consumers);
+
+  let locations = hits
+    .into_iter()
+    .filter(|node| reference_type.matches_node(node))
+    .map(|node| Location {
+      uri: tree_file_uri.clone(),
+      range: Range {
+        start: to_position(node.span().0),
+        end: to_position(node.span().1),
+      },
+    });
+
+  locations.collect()
+}
+
 fn get_scoped_functions<'a>(traversing_path: &Vec<Base<'a>>) -> Vec<(String, bool)> {
   let mut scoped_funs: Vec<(String, bool)> = vec![];
 
@@ -275,12 +418,12 @@ pub fn bfs_execute_at<'a, T>(
 
   curr_traversal.push(nestable.to_base_model());
 
-  let mut curr_diagnostics: Vec<T> = vec![];
+  let mut consumer_results: Vec<T> = vec![];
 
   consumers.iter().for_each(|consumer| {
     let result = consumer(&curr_traversal);
     if result.is_some() {
-      curr_diagnostics.append(result.unwrap().as_mut());
+      consumer_results.append(result.unwrap().as_mut());
     }
   });
 
@@ -288,11 +431,11 @@ pub fn bfs_execute_at<'a, T>(
     let mut child_results = bfs_execute_at(child, &curr_traversal, consumers);
 
     if !child_results.is_empty() {
-      curr_diagnostics.append(&mut child_results);
+      consumer_results.append(&mut child_results);
     }
   }
 
-  curr_diagnostics
+  consumer_results
 }
 
 pub fn get_hover_result<'a>(traversing_path: &Vec<Base<'a>>) -> Option<MarkupContent> {

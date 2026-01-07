@@ -14,7 +14,7 @@ use crate::{
   },
   provider::{
     analysis::{
-      get_hover_result, get_path_traversal, get_possible_completions, to_position,
+      get_hover_result, get_path_traversal, get_possible_completions, get_references, to_position,
       try_see_if_typable,
     },
     diagnoser::build_diagnostics,
@@ -35,6 +35,7 @@ pub fn start_server(startup_type: StartUpType, mut parser: Parser) -> Result<(),
   let server_capabilities = serde_json::to_value(&ServerCapabilities {
     text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
     hover_provider: Some(HoverProviderCapability::Simple(true)),
+    references_provider: Some(OneOf::Left(true)),
     definition_provider: Some(OneOf::Left(true)),
     completion_provider: Some(CompletionOptions {
       trigger_characters: Some(vec![".".to_owned()]),
@@ -104,6 +105,11 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
           handle_tokenize_request(tokenize_r, &evaulated_trees, req, &connection);
           continue;
         }
+
+        if let Ok(reference_r) = cast_req::<References>(&req) {
+          handle_references_request(reference_r, &evaulated_trees, req, &connection);
+          continue;
+        }
       }
       Message::Response(_) => continue,
       Message::Notification(not) => {
@@ -123,6 +129,32 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
   }
 
   Ok(())
+}
+
+fn handle_references_request<'a>(
+  refernce_r: (RequestId, ReferenceParams),
+  evaulated_trees: &'a HashMap<String, (RulesTree, Tree)>,
+  req: Request,
+  connection: &Connection,
+) {
+  let text_document = refernce_r.1.text_document_position.text_document;
+  let position = refernce_r.1.text_document_position.position;
+
+  let body = match try_get_body(evaulated_trees, &text_document) {
+    Some(value) => value,
+    None => {
+      Message::Response(Response::new_ok(req.id.clone(), "No body found"));
+      return;
+    }
+  };
+
+  let references = get_references(text_document.uri, get_path_traversal(position, body));
+
+  let _ = connection
+    .sender
+    .try_send(Message::Response(Response::new_ok::<Vec<Location>>(
+      req.id, references,
+    )));
 }
 
 fn handle_completion_request<'a>(
@@ -151,9 +183,12 @@ fn handle_completion_request<'a>(
     items: completions,
   });
 
-  let msg = Response::new_ok::<CompletionResponse>(req.id, completion_resp);
-
-  let _ = connection.sender.try_send(Message::Response(msg));
+  let _ = connection
+    .sender
+    .try_send(Message::Response(Response::new_ok::<CompletionResponse>(
+      req.id,
+      completion_resp,
+    )));
 }
 
 fn publish_diagnostics<'a>(
@@ -251,7 +286,7 @@ fn handle_go_to_definition<'a>(
 
   let hit = try_see_if_typable(&traversal);
 
-  let message = match hit.and_then(|h| h.0) {
+  match hit.and_then(|h| h.0) {
     Some(TypeInferenceResult::Definable(_, Ok(definition_span))) => {
       let range = Range {
         start: to_position(definition_span.0),
@@ -263,12 +298,34 @@ fn handle_go_to_definition<'a>(
         range,
       };
 
-      Response::new_ok::<GotoDefinitionResponse>(req.id, GotoDefinitionResponse::Scalar(location))
+      let _ =
+        connection.sender.try_send(Message::Response(
+          Response::new_ok::<GotoDefinitionResponse>(
+            req.id,
+            GotoDefinitionResponse::Scalar(location),
+          ),
+        ));
     }
-    _ => Response::new_ok::<GotoDefinitionResponse>(req.id, GotoDefinitionResponse::Array(vec![])),
-  };
+    // On a go to definition request on undefinable elements
+    // we revert to showing all references
+    Some(TypeInferenceResult::Undefinable(_)) => {
+      let references = get_references(definition_param.text_document.uri, traversal);
 
-  let _ = connection.sender.try_send(Message::Response(message));
+      let _ =
+        connection.sender.try_send(Message::Response(
+          Response::new_ok::<GotoDefinitionResponse>(
+            req.id,
+            GotoDefinitionResponse::Array(references),
+          ),
+        ));
+    }
+    _ => {
+      let _ =
+        connection.sender.try_send(Message::Response(
+          Response::new_ok::<GotoDefinitionResponse>(req.id, GotoDefinitionResponse::Array(vec![])),
+        ));
+    }
+  };
 }
 
 fn try_get_body<'a>(
