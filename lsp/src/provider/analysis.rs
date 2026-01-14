@@ -264,7 +264,13 @@ impl ReferenceType {
   }
 }
 
-pub fn get_references<'a>(tree_file_uri: Uri, traversing_path: Vec<Base<'a>>) -> Vec<Location> {
+pub fn get_references<'a>(
+  tree_file_uri: Uri,
+  position: Position,
+  body: &'a ServiceBody,
+) -> Vec<Location> {
+  let traversing_path = get_path_traversal(position, body);
+
   let last = traversing_path.last();
 
   if last.is_none() {
@@ -283,7 +289,7 @@ pub fn get_references<'a>(tree_file_uri: Uri, traversing_path: Vec<Base<'a>>) ->
       .and_then(|body| {
         Some(get_references_of(
           tree_file_uri,
-          ReferenceType::FunctionCall(func.name().to_owned()),
+          ReferenceType::FunctionCall(func.name().map_or("", |ident| ident.value()).to_owned()),
           body,
         ))
       })
@@ -307,15 +313,9 @@ pub fn get_references<'a>(tree_file_uri: Uri, traversing_path: Vec<Base<'a>>) ->
       Expr::Variable(var) => node
         .inferred_type(&traversing_path)
         .and_then(|inf| match inf {
-          TypeInferenceResult::Undefinable(type_information) => {
-            match type_information.firebase_type() {
-              FirebaseType::Request
-              | FirebaseType::Resource
-              | FirebaseType::MathModule
-              | FirebaseType::TimestampModule
-              | FirebaseType::LatLngModule
-              | FirebaseType::DurationModule
-              | FirebaseType::HashingModule => traversing_path
+          TypeInferenceResult::Undefinable(_) => {
+            match GLOBAL_VARIABLES.iter().find(|el| el.0 == var.value()) {
+              Some(hit) => traversing_path
                 .iter()
                 .rev()
                 .find_map(|body| match body {
@@ -325,12 +325,43 @@ pub fn get_references<'a>(tree_file_uri: Uri, traversing_path: Vec<Base<'a>>) ->
                 .and_then(|body| {
                   Some(get_references_of(
                     tree_file_uri,
-                    ReferenceType::VariableUse(var.value().to_owned()),
+                    ReferenceType::VariableUse(hit.0.to_owned()),
                     body,
                   ))
                 }),
               _ => None,
             }
+          }
+          TypeInferenceResult::Definable(_, Result::Ok(location)) => {
+            Some(get_references(tree_file_uri, to_position(location.0), body))
+          }
+          _ => None,
+        })
+        .unwrap_or(vec![]),
+      Expr::FunctionCall(fc, _) => node
+        .inferred_type(&traversing_path)
+        .and_then(|inf| match inf {
+          TypeInferenceResult::Undefinable(_) => {
+            match GLOBAL_FUNCTIONS.iter().find(|el| el.0 == fc.value()) {
+              Some(hit) => traversing_path
+                .iter()
+                .rev()
+                .find_map(|body| match body {
+                  Base::ServiceBody(body) => Some(*body as &dyn HasChildren<'a>),
+                  _ => None,
+                })
+                .and_then(|body| {
+                  Some(get_references_of(
+                    tree_file_uri,
+                    ReferenceType::FunctionCall(hit.0.to_owned()),
+                    body,
+                  ))
+                }),
+              _ => None,
+            }
+          }
+          TypeInferenceResult::Definable(_, Result::Ok(location)) => {
+            Some(get_references(tree_file_uri, to_position(location.0), body))
           }
           _ => None,
         })
@@ -392,12 +423,12 @@ fn get_scoped_functions<'a>(traversing_path: &Vec<Base<'a>>) -> Vec<(String, boo
 
   for node in traversing_path.iter().rev() {
     match node {
-      Base::MatchBody(body) => scoped_funs.extend(
-        body
-          .functions()
-          .iter()
-          .map(|def| (def.name().to_owned(), false)),
-      ),
+      Base::MatchBody(body) => scoped_funs.extend(body.functions().iter().map(|def| {
+        (
+          def.name().map_or("", |ident| ident.value()).to_owned(),
+          false,
+        )
+      })),
       _ => continue,
     }
   }

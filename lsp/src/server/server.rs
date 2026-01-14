@@ -148,7 +148,7 @@ fn handle_references_request<'a>(
     }
   };
 
-  let references = get_references(text_document.uri, get_path_traversal(position, body));
+  let references = get_references(text_document.uri, position, body);
 
   let _ = connection
     .sender
@@ -309,7 +309,11 @@ fn handle_go_to_definition<'a>(
     // On a go to definition request on undefinable elements
     // we revert to showing all references
     Some(TypeInferenceResult::Undefinable(_)) => {
-      let references = get_references(definition_param.text_document.uri, traversal);
+      let references = get_references(
+        definition_param.text_document.uri,
+        definition_param.position,
+        body,
+      );
 
       let _ =
         connection.sender.try_send(Message::Response(

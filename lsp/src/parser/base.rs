@@ -92,6 +92,26 @@ impl<'a> Base<'a> {
   }
 }
 
+impl<'a> Contains for Base<'a> {
+  fn contains(&self, p: Point) -> bool {
+    match self {
+      Base::Function(function) => function.contains(p),
+      Base::FunctionBody(function_body) => function_body.contains(p),
+      Base::Rule(rule) => rule.contains(p),
+      Base::VariableDefinition(vd) => vd.contains(p),
+      Base::MatchPath(match_path) => match_path.contains(p),
+      Base::Match(m) => m.contains(p),
+      Base::MatchBody(match_body) => match_body.contains(p),
+      Base::ServiceBody(service_body) => service_body.contains(p),
+      Base::ExprNode(expr_node) => expr_node.contains(p),
+      Base::Identifier(identifier) => identifier.contains(p),
+      Base::Literal(literal) => literal.contains(p),
+      Base::MatchPathPart(match_path_part) => match_path_part.contains(p),
+      Base::Method(method) => method.contains(p),
+    }
+  }
+}
+
 impl<'a> Debug for Base<'a> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
@@ -243,7 +263,7 @@ impl RulesTree {
 
 #[derive(Debug, Clone)]
 pub struct Function {
-  name: String,
+  name: Option<Identifier>,
   parameters: Vec<Identifier>,
   body: Option<FunctionBody>,
   start: Point,
@@ -253,7 +273,7 @@ pub struct Function {
 
 impl Function {
   pub fn new<'a>(
-    name: &str,
+    name: Option<Identifier>,
     parameters: Vec<Identifier>,
     body: Option<FunctionBody>,
     start: Point,
@@ -277,8 +297,8 @@ impl Function {
     self.body.as_ref()
   }
 
-  pub fn name(&self) -> &str {
-    &self.name
+  pub fn name(&self) -> Option<&Identifier> {
+    self.name.as_ref()
   }
 
   /// Function return type taken from the return statement in the body
@@ -1226,7 +1246,9 @@ fn find_function_type<'a>(
     .iter()
     .rev()
     .find_map(|el| match el {
-      Base::Function(f) => Some(f.name() == ident.value()),
+      Base::Function(f) => {
+        Some(f.name().map_or("", |name_node| name_node.value()) == ident.value())
+      }
       _ => None,
     })
     .unwrap_or(false);
@@ -1247,7 +1269,7 @@ fn find_function_type<'a>(
         let body_fun_hit = match_body
           .functions()
           .iter()
-          .find(|f| f.name() == ident.value());
+          .find(|f| f.name().map_or("", |fname| fname.value()) == ident.value());
 
         if body_fun_hit.is_some() {
           return Some((i, body_fun_hit.unwrap()));
@@ -1259,7 +1281,7 @@ fn find_function_type<'a>(
         let body_fun_hit = service_body
           .functions()
           .iter()
-          .find(|f| f.name() == ident.value());
+          .find(|f| f.name().map_or("", |fname| fname.value()) == ident.value());
 
         if body_fun_hit.is_some() {
           return Some((i, body_fun_hit.unwrap()));
@@ -1282,7 +1304,7 @@ fn find_function_type<'a>(
 
     return Some(TypeInferenceResult::Definable(
       function_type.unwrap_or(FirebaseTypeInformation::new_undocumented(FirebaseType::Any)),
-      Ok(func.span()),
+      Ok(func.name().unwrap().span()),
     ));
   }
 

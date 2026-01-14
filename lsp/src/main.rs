@@ -6,7 +6,7 @@ mod server;
 
 use std::error::Error;
 
-use clap::{arg, Command};
+use clap::{Command, arg};
 use server::server::start_server;
 use tree_sitter_firestore_rules;
 

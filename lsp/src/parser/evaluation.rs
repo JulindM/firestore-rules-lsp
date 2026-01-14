@@ -83,7 +83,7 @@ fn parse_match_def<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> Match {
 }
 
 fn parse_function_def<'b>(node: Node<'b>, source_bytes: &[u8]) -> Function {
-  let mut name = "";
+  let mut name = None;
   let mut params = vec![];
   let mut body = None;
 
@@ -92,7 +92,10 @@ fn parse_function_def<'b>(node: Node<'b>, source_bytes: &[u8]) -> Function {
   sanitized_children!(node).for_each(|child| match child.kind() {
     "function_name" => {
       name_start = Some(child.start_position());
-      name = child.utf8_text(source_bytes).unwrap()
+      name = Some(Identifier::new(
+        child.utf8_text(source_bytes).unwrap(),
+        child,
+      ))
     }
     "param_list" => params = parse_param_list(child, source_bytes),
     "function_body" => body = Some(parse_function_body(child, source_bytes)),
