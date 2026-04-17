@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 use strum::AsRefStr;
 
-use super::base::{FirebaseTypeInformation, FunctionParameter};
+use super::base::FirebaseTypeInformation;
 
 #[derive(Debug, Clone, Copy, PartialEq, AsRefStr)]
 pub enum FirebaseType {
@@ -34,13 +34,35 @@ pub enum FirebaseType {
   DurationModule,
 }
 
+pub struct BuiltInFunctionParameter {
+  name: String,
+  param_type: FirebaseTypeInformation,
+}
+
+impl BuiltInFunctionParameter {
+  pub fn new(name: &str, param_type: FirebaseTypeInformation) -> Self {
+    Self {
+      name: name.to_owned(),
+      param_type,
+    }
+  }
+
+  pub fn name(&self) -> &str {
+    &self.name
+  }
+
+  pub fn param_type(&self) -> &FirebaseTypeInformation {
+    &self.param_type
+  }
+}
+
 pub trait FirebaseTypeTrait {
   fn properties(&self) -> Vec<(&'static str, FirebaseTypeInformation)>;
   fn methods(
     &self,
   ) -> Vec<(
     &'static str,
-    Vec<FunctionParameter>,
+    Vec<BuiltInFunctionParameter>,
     FirebaseTypeInformation,
   )>;
   fn docstring(&self) -> &'static str;
@@ -204,7 +226,7 @@ impl FirebaseTypeTrait for FirebaseType {
     &self,
   ) -> Vec<(
     &'static str,
-    Vec<FunctionParameter>,
+    Vec<BuiltInFunctionParameter>,
     FirebaseTypeInformation,
   )> {
     match self {
@@ -212,7 +234,7 @@ impl FirebaseTypeTrait for FirebaseType {
         vec![
           (
             "ceil",
-            vec![FunctionParameter::new(
+            vec![BuiltInFunctionParameter::new(
               "number",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Number,
@@ -226,7 +248,7 @@ impl FirebaseTypeTrait for FirebaseType {
           ),
           (
             "floor",
-            vec![FunctionParameter::new(
+            vec![BuiltInFunctionParameter::new(
               "number",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Number,
@@ -240,7 +262,7 @@ impl FirebaseTypeTrait for FirebaseType {
           ),
           (
             "isInfinite",
-            vec![FunctionParameter::new(
+            vec![BuiltInFunctionParameter::new(
               "number",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Number,
@@ -254,7 +276,7 @@ impl FirebaseTypeTrait for FirebaseType {
           ),
           (
             "isNaN",
-            vec![FunctionParameter::new(
+            vec![BuiltInFunctionParameter::new(
               "number",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Number,
@@ -269,14 +291,14 @@ impl FirebaseTypeTrait for FirebaseType {
           (
             "pow",
             vec![
-              FunctionParameter::new(
+              BuiltInFunctionParameter::new(
                 "base",
                 FirebaseTypeInformation::new_documented(
                   FirebaseType::Number,
                   FirebaseType::Number.docstring(),
                 ),
               ),
-              FunctionParameter::new(
+              BuiltInFunctionParameter::new(
                 "exponent",
                 FirebaseTypeInformation::new_documented(
                   FirebaseType::Number,
@@ -291,7 +313,7 @@ impl FirebaseTypeTrait for FirebaseType {
           ),
           (
             "round",
-            vec![FunctionParameter::new(
+            vec![BuiltInFunctionParameter::new(
               "number",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Number,
@@ -305,7 +327,7 @@ impl FirebaseTypeTrait for FirebaseType {
           ),
           (
             "sqrt",
-            vec![FunctionParameter::new(
+            vec![BuiltInFunctionParameter::new(
               "number",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Number,
@@ -324,21 +346,21 @@ impl FirebaseTypeTrait for FirebaseType {
           (
             "date",
             vec![
-              FunctionParameter::new(
+              BuiltInFunctionParameter::new(
                 "year",
                 FirebaseTypeInformation::new_documented(
                   FirebaseType::Integer,
                   FirebaseType::Integer.docstring(),
                 ),
               ),
-              FunctionParameter::new(
+              BuiltInFunctionParameter::new(
                 "month",
                 FirebaseTypeInformation::new_documented(
                   FirebaseType::Integer,
                   FirebaseType::Integer.docstring(),
                 ),
               ),
-              FunctionParameter::new(
+              BuiltInFunctionParameter::new(
                 "day",
                 FirebaseTypeInformation::new_documented(
                   FirebaseType::Integer,
@@ -353,7 +375,7 @@ impl FirebaseTypeTrait for FirebaseType {
           ),
           (
             "value",
-            vec![FunctionParameter::new(
+            vec![BuiltInFunctionParameter::new(
               "epochMillis",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Integer,
@@ -560,7 +582,7 @@ impl FirebaseTypeTrait for FirebaseType {
       FirebaseType::List => vec![
         (
           "concat",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "list",
             FirebaseTypeInformation::new_documented(
               FirebaseType::List,
@@ -574,7 +596,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
         (
           "hasAll",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "list",
             FirebaseTypeInformation::new_documented(
               FirebaseType::List,
@@ -588,7 +610,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
         (
           "hasAny",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "list",
             FirebaseTypeInformation::new_documented(
               FirebaseType::List,
@@ -602,7 +624,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
         (
           "hasOnly",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "list",
             FirebaseTypeInformation::new_documented(
               FirebaseType::List,
@@ -616,7 +638,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
         (
           "join",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "separator",
             FirebaseTypeInformation::new_documented(
               FirebaseType::String,
@@ -630,7 +652,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
         (
           "removeAll",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "list",
             FirebaseTypeInformation::new_documented(
               FirebaseType::List,
@@ -662,7 +684,7 @@ impl FirebaseTypeTrait for FirebaseType {
       FirebaseType::Map => vec![
         (
           "diff",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "map_to_compare",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Map,
@@ -677,14 +699,14 @@ impl FirebaseTypeTrait for FirebaseType {
         (
           "get",
           vec![
-            FunctionParameter::new(
+            BuiltInFunctionParameter::new(
               "key",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Any,
                 FirebaseType::Any.docstring(),
               ),
             ),
-            FunctionParameter::new(
+            BuiltInFunctionParameter::new(
               "default_value",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Any,
@@ -766,7 +788,7 @@ impl FirebaseTypeTrait for FirebaseType {
       ],
       FirebaseType::Path => vec![(
         "bind",
-        vec![FunctionParameter::new(
+        vec![BuiltInFunctionParameter::new(
           "map",
           FirebaseTypeInformation::new_documented(FirebaseType::Map, FirebaseType::Map.docstring()),
         )],
@@ -784,7 +806,7 @@ impl FirebaseTypeTrait for FirebaseType {
       FirebaseType::Set => vec![
         (
           "difference",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "set",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Set,
@@ -798,7 +820,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
         (
           "hasAll",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "set",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Set,
@@ -812,7 +834,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
         (
           "hasAny",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "set",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Set,
@@ -826,7 +848,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
         (
           "hasOnly",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "set",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Set,
@@ -840,7 +862,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
         (
           "intersection",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "set",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Set,
@@ -854,7 +876,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
         (
           "union",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "set",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Set,
@@ -879,7 +901,7 @@ impl FirebaseTypeTrait for FirebaseType {
       FirebaseType::HashingModule => vec![
         (
           "crc32",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "bytes_or_string",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Any,
@@ -893,7 +915,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
         (
           "crc32c",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "bytes_or_string",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Any,
@@ -907,7 +929,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
         (
           "md5",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "bytes_or_string",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Any,
@@ -921,7 +943,7 @@ impl FirebaseTypeTrait for FirebaseType {
         ),
         (
           "sha256",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "bytes_or_string",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Any,
@@ -937,14 +959,14 @@ impl FirebaseTypeTrait for FirebaseType {
       FirebaseType::LatLngModule => vec![(
         "value",
         vec![
-          FunctionParameter::new(
+          BuiltInFunctionParameter::new(
             "lat",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Float,
               FirebaseType::Float.docstring(),
             ),
           ),
-          FunctionParameter::new(
+          BuiltInFunctionParameter::new(
             "lng",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Float,
@@ -960,7 +982,7 @@ impl FirebaseTypeTrait for FirebaseType {
       FirebaseType::DurationModule => vec![
         (
           "abs",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "duration",
             FirebaseTypeInformation::new_documented(
               FirebaseType::Duration,
@@ -975,28 +997,28 @@ impl FirebaseTypeTrait for FirebaseType {
         (
           "time",
           vec![
-            FunctionParameter::new(
+            BuiltInFunctionParameter::new(
               "hours",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Integer,
                 FirebaseType::Integer.docstring(),
               ),
             ),
-            FunctionParameter::new(
+            BuiltInFunctionParameter::new(
               "mins",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Integer,
                 FirebaseType::Integer.docstring(),
               ),
             ),
-            FunctionParameter::new(
+            BuiltInFunctionParameter::new(
               "secs",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Integer,
                 FirebaseType::Integer.docstring(),
               ),
             ),
-            FunctionParameter::new(
+            BuiltInFunctionParameter::new(
               "nanos",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Integer,
@@ -1012,14 +1034,14 @@ impl FirebaseTypeTrait for FirebaseType {
         (
           "static",
           vec![
-            FunctionParameter::new(
+            BuiltInFunctionParameter::new(
               "magnitude",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::Integer,
                 FirebaseType::Integer.docstring(),
               ),
             ),
-            FunctionParameter::new(
+            BuiltInFunctionParameter::new(
               "unit",
               FirebaseTypeInformation::new_documented(
                 FirebaseType::String,
@@ -1036,7 +1058,7 @@ impl FirebaseTypeTrait for FirebaseType {
       FirebaseType::LatLng => vec![
         (
           "distance",
-          vec![FunctionParameter::new(
+          vec![BuiltInFunctionParameter::new(
             "other",
             FirebaseTypeInformation::new_documented(
               FirebaseType::LatLng,

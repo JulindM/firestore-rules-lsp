@@ -41,6 +41,8 @@ pub fn try_see_if_typable<'a>(
     Base::ExprNode(expr) => expr.inferred_type(&traversal_not_last),
     Base::Function(fun) => fun.return_type(&traversal_not_last),
     Base::VariableDefinition(vd) => vd.variable_type(&traversal_not_last),
+    Base::FunctionParameter(param) => param.param_type(),
+    Base::MatchPathPart(path_part) => path_part.part_firebase_type(),
     _ => None,
   };
 
@@ -244,7 +246,7 @@ fn get_scoped_variables<'a>(traversing_path: &Vec<Base<'a>>) -> Vec<(String, boo
   scoped_vars
 }
 
-enum ReferenceType {
+pub enum ReferenceType {
   FunctionCall(String),
   VariableUse(String),
 }
@@ -368,11 +370,47 @@ pub fn get_references<'a>(
         .unwrap_or(vec![]),
       _ => vec![],
     },
+    Base::MatchPathPart(path_part) => {
+      if path_part.pathpart_type() == &MatchPathPartType::Document {
+        return traversing_path
+          .iter()
+          .rev()
+          .find_map(|el| match el {
+            Base::Match(body) => Some(*body as &dyn HasChildren<'a>),
+            _ => None,
+          })
+          .and_then(|body| {
+            Some(get_references_of(
+              tree_file_uri,
+              ReferenceType::VariableUse(path_part.value().to_owned()),
+              body,
+            ))
+          })
+          .unwrap_or(vec![]);
+      }
+
+      return vec![];
+    }
+    Base::FunctionParameter(param) => traversing_path
+      .iter()
+      .rev()
+      .find_map(|body| match body {
+        Base::Function(fun) => Some(*fun as &dyn HasChildren<'a>),
+        _ => None,
+      })
+      .and_then(|body| {
+        Some(get_references_of(
+          tree_file_uri,
+          ReferenceType::VariableUse(param.name().to_owned()),
+          body,
+        ))
+      })
+      .unwrap_or(vec![]),
     _ => vec![],
   };
 }
 
-fn get_references_of<'a>(
+pub fn get_references_of<'a>(
   tree_file_uri: Uri,
   reference_type: ReferenceType,
   scope_start: &'a dyn HasChildren<'a>,

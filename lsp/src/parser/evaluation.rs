@@ -111,18 +111,18 @@ fn parse_function_def<'b>(node: Node<'b>, source_bytes: &[u8]) -> Function {
   )
 }
 
-fn parse_param_list<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> Vec<Identifier> {
-  let mut idents = vec![];
+fn parse_param_list<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> Vec<FunctionParameter> {
+  let mut params = vec![];
 
   sanitized_children!(node).for_each(|child| match child.kind() {
-    "identifier" => idents.push(Identifier::new(
+    "identifier" => params.push(FunctionParameter::new(
       child.utf8_text(source_bytes).unwrap(),
       child,
     )),
     _ => return,
   });
 
-  idents
+  params
 }
 
 fn parse_function_body<'b>(node: Node<'b>, source_bytes: &[u8]) -> FunctionBody {

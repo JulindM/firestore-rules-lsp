@@ -50,6 +50,7 @@ pub trait ToBase: Contains {
 #[derive(Clone, Display)]
 pub enum Base<'a> {
   Function(&'a Function),
+  FunctionParameter(&'a FunctionParameter),
   FunctionBody(&'a FunctionBody),
   Rule(&'a Rule),
   VariableDefinition(&'a VariableDefinition),
@@ -69,6 +70,7 @@ impl<'a> Base<'a> {
   pub fn span(&self) -> (Point, Point) {
     match self {
       Base::Function(f) => f.span(),
+      Base::FunctionParameter(fp) => fp.span(),
       Base::FunctionBody(fb) => fb.span(),
       Base::Rule(r) => r.span(),
       Base::VariableDefinition(vd) => vd.span(),
@@ -96,6 +98,7 @@ impl<'a> Contains for Base<'a> {
   fn contains(&self, p: Point) -> bool {
     match self {
       Base::Function(function) => function.contains(p),
+      Base::FunctionParameter(function_parameter) => function_parameter.contains(p),
       Base::FunctionBody(function_body) => function_body.contains(p),
       Base::Rule(rule) => rule.contains(p),
       Base::VariableDefinition(vd) => vd.contains(p),
@@ -116,6 +119,7 @@ impl<'a> Debug for Base<'a> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::Function(_) => f.debug_tuple("Function").finish(),
+      Self::FunctionParameter(_) => f.debug_tuple("FunctionParameter").finish(),
       Self::FunctionBody(_) => f.debug_tuple("FunctionBody").finish(),
       Self::Rule(_) => f.debug_tuple("Rule").finish(),
       Self::VariableDefinition(_) => f.debug_tuple("VariableDefinition").finish(),
@@ -161,28 +165,6 @@ impl Contains for (Point, Point) {
       // Oneline spanning
       return self.0.column <= p.column && p.column <= self.1.column;
     }
-  }
-}
-
-pub struct FunctionParameter {
-  name: String,
-  param_type: FirebaseTypeInformation,
-}
-
-impl FunctionParameter {
-  pub fn new(name: &str, param_type: FirebaseTypeInformation) -> Self {
-    Self {
-      name: name.to_owned(),
-      param_type,
-    }
-  }
-
-  pub fn name(&self) -> &str {
-    &self.name
-  }
-
-  pub fn param_type(&self) -> &FirebaseTypeInformation {
-    &self.param_type
   }
 }
 
@@ -262,9 +244,53 @@ impl RulesTree {
 }
 
 #[derive(Debug, Clone)]
+pub struct FunctionParameter {
+  name: String,
+  start: Point,
+  end: Point,
+  param_type: OnceCell<Option<TypeInferenceResult>>,
+}
+
+impl FunctionParameter {
+  pub fn new<'a>(name: &str, node: Node<'a>) -> Self {
+    Self {
+      name: name.to_owned(),
+      start: node.start_position(),
+      end: node.end_position(),
+      param_type: OnceCell::new(),
+    }
+  }
+
+  pub fn name(&self) -> &str {
+    &self.name
+  }
+
+  pub fn param_type(&self) -> Option<&TypeInferenceResult> {
+    self
+      .param_type
+      .get_or_init(|| {
+        Some(TypeInferenceResult::Undefinable(
+          FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
+        ))
+      })
+      .as_ref()
+  }
+}
+
+bm_contains!(FunctionParameter);
+bm_span!(FunctionParameter);
+bm_to_base_model!(FunctionParameter);
+
+impl<'a> HasChildren<'a> for FunctionParameter {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
+    vec![]
+  }
+}
+
+#[derive(Debug, Clone)]
 pub struct Function {
   name: Option<Identifier>,
-  parameters: Vec<Identifier>,
+  parameters: Vec<FunctionParameter>,
   body: Option<FunctionBody>,
   start: Point,
   end: Point,
@@ -274,7 +300,7 @@ pub struct Function {
 impl Function {
   pub fn new<'a>(
     name: Option<Identifier>,
-    parameters: Vec<Identifier>,
+    parameters: Vec<FunctionParameter>,
     body: Option<FunctionBody>,
     start: Point,
     end: Point,
@@ -289,7 +315,7 @@ impl Function {
     }
   }
 
-  pub fn parameters(&self) -> &[Identifier] {
+  pub fn parameters(&self) -> &[FunctionParameter] {
     &self.parameters
   }
 
@@ -534,6 +560,7 @@ pub struct MatchPathPart {
   pathpart_type: MatchPathPartType,
   start: Point,
   end: Point,
+  pathpart_firebase_type: OnceCell<Option<TypeInferenceResult>>,
 }
 
 impl MatchPathPart {
@@ -543,6 +570,7 @@ impl MatchPathPart {
       pathpart_type,
       start: node.start_position(),
       end: node.end_position(),
+      pathpart_firebase_type: OnceCell::new(),
     }
   }
 
@@ -561,6 +589,17 @@ impl MatchPathPart {
       // TODO Handle multi path parts
       _ => self.value.as_ref(),
     }
+  }
+
+  pub fn part_firebase_type(&self) -> Option<&TypeInferenceResult> {
+    self
+      .pathpart_firebase_type
+      .get_or_init(|| {
+        Some(TypeInferenceResult::Undefinable(
+          FirebaseTypeInformation::new_undocumented(FirebaseType::String),
+        ))
+      })
+      .as_ref()
   }
 }
 
@@ -1189,7 +1228,7 @@ fn find_variable_type<'a>(
       func
         .parameters()
         .iter()
-        .find(|param| param.value() == ident.value())
+        .find(|param| param.name() == ident.value())
     });
 
   if var_def_in_params.is_some() {

@@ -1,5 +1,6 @@
-use lsp_types::{Diagnostic, DiagnosticSeverity, Range};
-use serde::de;
+use std::str::FromStr;
+
+use lsp_types::{Diagnostic, DiagnosticSeverity, Range, Uri};
 use tree_sitter::{Node, Point, Tree};
 
 use super::analysis::*;
@@ -89,9 +90,144 @@ pub fn diagnose_linting_errors<'a>(tree: &'a RulesTree) -> Vec<Diagnostic> {
 
   let body = tree.body().unwrap();
 
-  let diagnosers: Vec<Diagnoser> = vec![find_missing_definitions, find_if_rule_expr_not_bool];
+  let diagnosers: Vec<Diagnoser> = vec![
+    find_missing_definitions,
+    find_if_rule_expr_not_bool,
+    find_unused_elements,
+  ];
 
   bfs_execute_at(body, &vec![], &diagnosers)
+}
+
+fn find_unused_elements<'a>(traversal_list: &Vec<Base<'a>>) -> Option<Vec<Diagnostic>> {
+  let last_node = traversal_list.last();
+
+  if last_node.is_none() {
+    return None;
+  }
+
+  let node = last_node.unwrap();
+
+  let uri = Uri::from_str("file:///dummy").unwrap();
+
+  match node {
+    Base::VariableDefinition(def) => {
+      let references = traversal_list
+        .iter()
+        .rev()
+        .find_map(|body| match body {
+          Base::FunctionBody(fun_body) => Some(*fun_body),
+          _ => None,
+        })
+        .and_then(|func| {
+          Some(get_references_of(
+            uri,
+            ReferenceType::VariableUse(def.name().to_owned()),
+            func,
+          ))
+        })
+        .unwrap_or(vec![]);
+
+      if references.len() == 0 {
+        return Some(vec![Diagnostic {
+          range: Range {
+            start: to_position(def.span().0),
+            end: to_position(def.span().1),
+          },
+          severity: Some(DiagnosticSeverity::WARNING),
+          code: None,
+          code_description: None,
+          source: None,
+          message: format!("Variable `{}` is defined but never used", def.name()),
+          related_information: None,
+          tags: None,
+          data: None,
+        }]);
+      }
+
+      return None;
+    }
+    Base::Function(func) => {
+      let references = traversal_list
+        .iter()
+        .rev()
+        .find_map(|body| match body {
+          Base::MatchBody(body) => Some(*body as &dyn HasChildren<'a>),
+          Base::ServiceBody(body) => Some(*body as &dyn HasChildren<'a>),
+          _ => None,
+        })
+        .and_then(|body| {
+          Some(get_references_of(
+            uri,
+            ReferenceType::FunctionCall(func.name().map_or("", |ident| ident.value()).to_owned()),
+            body,
+          ))
+        })
+        .unwrap_or(vec![]);
+
+      if references.len() == 0 {
+        return Some(vec![Diagnostic {
+          range: Range {
+            start: to_position(func.span().0),
+            end: to_position(func.span().1),
+          },
+          severity: Some(DiagnosticSeverity::WARNING),
+          code: None,
+          code_description: None,
+          source: None,
+          message: format!(
+            "Function `{}` is defined but never used",
+            func
+              .name()
+              .and_then(|ident| Some(ident.value()))
+              .unwrap_or("")
+          ),
+          related_information: None,
+          tags: None,
+          data: None,
+        }]);
+      }
+
+      return None;
+    }
+    Base::FunctionParameter(param) => {
+      let references = traversal_list
+        .iter()
+        .rev()
+        .find_map(|body| match body {
+          Base::Function(func) => Some(*func),
+          _ => None,
+        })
+        .and_then(|func| {
+          Some(get_references_of(
+            uri,
+            ReferenceType::VariableUse(param.name().to_owned()),
+            func,
+          ))
+        })
+        .unwrap_or(vec![]);
+
+      if references.len() == 0 {
+        return Some(vec![Diagnostic {
+          range: Range {
+            start: to_position(param.span().0),
+            end: to_position(param.span().1),
+          },
+          severity: Some(DiagnosticSeverity::WARNING),
+          code: None,
+          code_description: None,
+          source: None,
+          message: format!("Parameter `{}` is defined but never used", param.name()),
+          related_information: None,
+          tags: None,
+          data: None,
+        }]);
+      }
+
+      return None;
+    }
+    _ => None,
+  }
 }
 
 fn find_if_rule_expr_not_bool(traversal_list: &Vec<Base<'_>>) -> Option<Vec<Diagnostic>> {
