@@ -839,8 +839,12 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
+        {
+          "type": "function_def",
+          "named": true
+        },
         {
           "type": "rules_version_def",
           "named": true

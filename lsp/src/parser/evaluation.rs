@@ -1,4 +1,4 @@
-use tree_sitter::{Node, Tree};
+use tree_sitter::{Node, Point, Tree};
 
 use super::{base::*, types::*};
 
@@ -12,10 +12,11 @@ pub fn evaluate_tree(tree: Tree, source_bytes: &[u8]) -> RulesTree {
   let node = tree.root_node();
 
   if node.kind() != "source_file" {
-    return RulesTree::new(None, None);
+    return RulesTree::new(None, None, Vec::new(), Point::new(0, 0), Point::new(0, 0));
   }
 
   let mut match_body = None;
+  let mut functions = vec![];
 
   let mut service_type = None;
 
@@ -30,16 +31,23 @@ pub fn evaluate_tree(tree: Tree, source_bytes: &[u8]) -> RulesTree {
         Err(_) => None,
       };
     }
+    "function_def" => functions.push(parse_function_def(child, source_bytes)),
     "service_body" => {
-      match_body = Some(parse_service_definition(child, source_bytes));
+      match_body = Some(parse_service_body(child, source_bytes));
     }
     _ => return,
   });
 
-  RulesTree::new(service_type, match_body)
+  RulesTree::new(
+    service_type,
+    match_body,
+    functions,
+    node.start_position(),
+    node.end_position(),
+  )
 }
 
-fn parse_service_definition<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> ServiceBody {
+fn parse_service_body<'a, 'b>(node: Node<'b>, source_bytes: &[u8]) -> ServiceBody {
   let mut matches = vec![];
   let mut functions = vec![];
   let mut rules = vec![];
@@ -94,7 +102,8 @@ fn parse_function_def<'b>(node: Node<'b>, source_bytes: &[u8]) -> Function {
       name_start = Some(child.start_position());
       name = Some(Identifier::new(
         child.utf8_text(source_bytes).unwrap(),
-        child,
+        child.start_position(),
+        child.end_position(),
       ))
     }
     "param_list" => params = parse_param_list(child, source_bytes),
@@ -309,7 +318,11 @@ fn parse_function_calling_name<'b>(node: Node<'b>, source_bytes: &[u8]) -> Optio
   let name = fnode.unwrap().utf8_text(source_bytes).unwrap();
 
   match fnode.unwrap().kind() {
-    "identifier" => Some(Identifier::new(name, node)),
+    "identifier" => Some(Identifier::new(
+      name,
+      node.start_position(),
+      node.end_position(),
+    )),
     _ => None,
   }
 }
@@ -396,7 +409,7 @@ fn parse_variable<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
     "identifier" => {
       let vname = var_node?.utf8_text(source_bytes).unwrap();
 
-      let ident = Identifier::new(vname, node);
+      let ident = Identifier::new(vname, node.start_position(), node.end_position());
 
       Some(ExprNode::new(Expr::Variable(ident), node))
     }

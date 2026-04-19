@@ -27,16 +27,41 @@
           ]
         },
         {
-          "type": "STRING",
-          "value": "service"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "function_def"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
-          "type": "SYMBOL",
-          "name": "service_type"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "service_body"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "service"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "service_type"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "service_body"
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },

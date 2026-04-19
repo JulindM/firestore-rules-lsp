@@ -9,7 +9,7 @@ use tree_sitter::{Parser, Tree};
 use crate::{
   StartUpType,
   parser::{
-    base::{RulesTree, ServiceBody, TypeInferenceResult},
+    base::{RulesTree, TypeInferenceResult},
     evaluation::evaluate_tree,
   },
   provider::{
@@ -55,6 +55,7 @@ pub fn start_server(startup_type: StartUpType, mut parser: Parser) -> Result<(),
         full: Some(SemanticTokensFullOptions::Bool(true)),
       },
     )),
+    document_symbol_provider: Some(OneOf::Left(true)),
     ..Default::default()
   })
   .unwrap();
@@ -140,7 +141,7 @@ fn handle_references_request<'a>(
   let text_document = refernce_r.1.text_document_position.text_document;
   let position = refernce_r.1.text_document_position.position;
 
-  let body = match try_get_body(evaulated_trees, &text_document) {
+  let tree = match try_get_tree(evaulated_trees, &text_document) {
     Some(value) => value,
     None => {
       Message::Response(Response::new_ok(req.id.clone(), "No body found"));
@@ -148,7 +149,7 @@ fn handle_references_request<'a>(
     }
   };
 
-  let references = get_references(text_document.uri, position, body);
+  let references = get_references(text_document.uri, position, tree);
 
   let _ = connection
     .sender
@@ -166,7 +167,7 @@ fn handle_completion_request<'a>(
   let text_document = definition_r.1.text_document_position.text_document;
   let position = definition_r.1.text_document_position.position;
 
-  let body = match try_get_body(evaulated_trees, &text_document) {
+  let body = match try_get_tree(evaulated_trees, &text_document) {
     Some(value) => value,
     None => {
       Message::Response(Response::new_ok(req.id.clone(), "No body found"));
@@ -274,7 +275,7 @@ fn handle_go_to_definition<'a>(
 ) {
   let definition_param = definition_r.1.text_document_position_params;
 
-  let body = match try_get_body(evaulated_trees, &definition_param.text_document) {
+  let body = match try_get_tree(evaulated_trees, &definition_param.text_document) {
     Some(value) => value,
     None => {
       Message::Response(Response::new_ok(req.id.clone(), "No body found"));
@@ -306,9 +307,10 @@ fn handle_go_to_definition<'a>(
           ),
         ));
     }
-    // On a go to definition request on undefinable elements
+
+    // On a go to definition request on hidden definition elements
     // we revert to showing all references
-    Some(TypeInferenceResult::Undefinable(_)) => {
+    Some(TypeInferenceResult::HiddenDefinition(_)) | Some(TypeInferenceResult::Undefinable(_)) => {
       let references = get_references(
         definition_param.text_document.uri,
         definition_param.position,
@@ -332,10 +334,10 @@ fn handle_go_to_definition<'a>(
   };
 }
 
-fn try_get_body<'a>(
+fn try_get_tree<'a>(
   evaulated_trees: &'a HashMap<String, (RulesTree, Tree)>,
   doc: &TextDocumentIdentifier,
-) -> Option<&'a ServiceBody> {
+) -> Option<&'a RulesTree> {
   let find = evaulated_trees.get(doc.uri.as_str());
 
   if find.is_none() {
@@ -344,7 +346,7 @@ fn try_get_body<'a>(
 
   let (firestore_tree, _) = find.unwrap();
 
-  firestore_tree.body()
+  Some(firestore_tree)
 }
 
 fn handle_hover<'a>(
@@ -355,7 +357,7 @@ fn handle_hover<'a>(
 ) {
   let hover_params = hover_r.1.text_document_position_params;
 
-  let body = match try_get_body(evaulated_trees, &hover_params.text_document) {
+  let body = match try_get_tree(evaulated_trees, &hover_params.text_document) {
     Some(value) => value,
     None => return,
   };

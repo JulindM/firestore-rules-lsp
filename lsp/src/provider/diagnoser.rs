@@ -83,20 +83,106 @@ fn is_parse_error<'a>(node: Node<'a>) -> Option<Node<'a>> {
 type Diagnoser = fn(&Vec<Base<'_>>) -> Option<Vec<Diagnostic>>;
 
 pub fn diagnose_linting_errors<'a>(tree: &'a RulesTree) -> Vec<Diagnostic> {
-  if tree.body().is_none() || tree.service_type() != Some(&ServiceType::Firestore) {
+  if tree.service_type() != Some(&ServiceType::Firestore) {
     // Disable linting for non-firestore rules for now
     return vec![];
   }
-
-  let body = tree.body().unwrap();
 
   let diagnosers: Vec<Diagnoser> = vec![
     find_missing_definitions,
     find_if_rule_expr_not_bool,
     find_unused_elements,
+    max_ten_let_bindings,
+    functions_may_not_recurse,
   ];
 
-  bfs_execute_at(body, &vec![], &diagnosers)
+  bfs_execute_at(tree, &vec![], &diagnosers)
+}
+
+fn functions_may_not_recurse<'a>(traversal_list: &Vec<Base<'a>>) -> Option<Vec<Diagnostic>> {
+  let last_node = traversal_list.last();
+
+  if last_node.is_none() {
+    return None;
+  }
+
+  let node = last_node.unwrap();
+
+  match node {
+    Base::ExprNode(node) => match node.expr() {
+      Expr::FunctionCall(name, _) => {
+        let parent_func_same_name = traversal_list.iter().rev().find(|el| match el {
+          Base::Function(func) => func.name().map(|n| n.value()).unwrap_or("") == name.value(),
+          _ => false,
+        });
+
+        if parent_func_same_name.is_some() {
+          return Some(vec![Diagnostic {
+            range: Range {
+              start: to_position(node.span().0),
+              end: to_position(node.span().1),
+            },
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: None,
+            code_description: None,
+            source: None,
+            message: format!(
+              "Function `{}` may not call itself recursively",
+              name.value()
+            ),
+            related_information: None,
+            tags: None,
+            data: None,
+          }]);
+        }
+
+        None
+      }
+      _ => None,
+    },
+    _ => None,
+  }
+}
+
+fn max_ten_let_bindings<'a>(traversal_list: &Vec<Base<'a>>) -> Option<Vec<Diagnostic>> {
+  let last_node = traversal_list.last();
+
+  if last_node.is_none() {
+    return None;
+  }
+
+  let node = last_node.unwrap();
+
+  match node {
+    Base::FunctionBody(body) => {
+      let defs = body.variable_defs();
+
+      if defs.len() <= 10 {
+        return None;
+      }
+
+      let last_after_ten_spans = defs.iter().skip(10).map(|def| def.span());
+
+      return last_after_ten_spans
+        .map(|span| Diagnostic {
+          range: Range {
+            start: to_position(span.0),
+            end: to_position(span.1),
+          },
+          severity: Some(DiagnosticSeverity::ERROR),
+          code: None,
+          code_description: None,
+          source: None,
+          message: format!("Function body has more than allowed 10 variable definitions"),
+          related_information: None,
+          tags: None,
+          data: None,
+        })
+        .collect::<Vec<Diagnostic>>()
+        .into();
+    }
+    _ => None,
+  }
 }
 
 fn find_unused_elements<'a>(traversal_list: &Vec<Base<'a>>) -> Option<Vec<Diagnostic>> {
@@ -154,6 +240,7 @@ fn find_unused_elements<'a>(traversal_list: &Vec<Base<'a>>) -> Option<Vec<Diagno
         .find_map(|body| match body {
           Base::MatchBody(body) => Some(*body as &dyn HasChildren<'a>),
           Base::ServiceBody(body) => Some(*body as &dyn HasChildren<'a>),
+          Base::RulesTree(tree) => Some(*tree as &dyn HasChildren<'a>),
           _ => None,
         })
         .and_then(|body| {
@@ -166,10 +253,18 @@ fn find_unused_elements<'a>(traversal_list: &Vec<Base<'a>>) -> Option<Vec<Diagno
         .unwrap_or(vec![]);
 
       if references.len() == 0 {
+        let func_ident = func.name();
+
+        if func_ident.is_none() {
+          return None;
+        }
+
+        let ident = func_ident.unwrap();
+
         return Some(vec![Diagnostic {
           range: Range {
-            start: to_position(func.span().0),
-            end: to_position(func.span().1),
+            start: to_position(ident.span().0),
+            end: to_position(ident.span().1),
           },
           severity: Some(DiagnosticSeverity::WARNING),
           code: None,

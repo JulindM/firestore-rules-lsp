@@ -233,15 +233,21 @@ fn get_scoped_variables<'a>(traversing_path: &Vec<Base<'a>>) -> Vec<(String, boo
           .iter()
           .map(|def| (def.name().to_owned(), false, VariableType::Variable)),
       ),
+      Base::ServiceBody(body) => scoped_vars.extend(
+        body
+          .service_global_variables()
+          .iter()
+          .map(|def| (def.name().to_owned(), false, VariableType::Module)),
+      ),
+      Base::RulesTree(tree) => scoped_vars.extend(
+        tree
+          .global_variables()
+          .iter()
+          .map(|def| (def.name().to_owned(), true, VariableType::Module)),
+      ),
       _ => continue,
     }
   }
-
-  scoped_vars.extend(
-    GLOBAL_VARIABLES
-      .iter()
-      .map(|def| (def.0.to_owned(), true, def.2.clone())),
-  );
 
   scoped_vars
 }
@@ -269,9 +275,9 @@ impl ReferenceType {
 pub fn get_references<'a>(
   tree_file_uri: Uri,
   position: Position,
-  body: &'a ServiceBody,
+  tree: &'a RulesTree,
 ) -> Vec<Location> {
-  let traversing_path = get_path_traversal(position, body);
+  let traversing_path = get_path_traversal(position, tree);
 
   let last = traversing_path.last();
 
@@ -312,62 +318,94 @@ pub fn get_references<'a>(
       })
       .unwrap_or(vec![]),
     Base::ExprNode(node) => match node.expr() {
-      Expr::Variable(var) => node
-        .inferred_type(&traversing_path)
-        .and_then(|inf| match inf {
-          TypeInferenceResult::Undefinable(_) => {
-            match GLOBAL_VARIABLES.iter().find(|el| el.0 == var.value()) {
-              Some(hit) => traversing_path
-                .iter()
-                .rev()
-                .find_map(|body| match body {
-                  Base::ServiceBody(body) => Some(*body as &dyn HasChildren<'a>),
-                  _ => None,
-                })
-                .and_then(|body| {
-                  Some(get_references_of(
-                    tree_file_uri,
-                    ReferenceType::VariableUse(hit.0.to_owned()),
-                    body,
-                  ))
-                }),
-              _ => None,
+      Expr::Variable(var) => {
+        let variable_name = var.value();
+
+        node
+          .inferred_type(&traversing_path)
+          .and_then(|inf| match inf {
+            TypeInferenceResult::HiddenDefinition(_) => traversing_path
+              .iter()
+              .rev()
+              .find_map(|body| match body {
+                Base::RulesTree(rules)
+                  if rules
+                    .global_variables()
+                    .iter()
+                    .find(|el| el.name() == variable_name)
+                    .is_some() =>
+                {
+                  Some(*rules as &dyn HasChildren<'a>)
+                }
+                Base::ServiceBody(service_body)
+                  if service_body
+                    .service_global_variables()
+                    .iter()
+                    .find(|el| el.name() == variable_name)
+                    .is_some() =>
+                {
+                  Some(*service_body as &dyn HasChildren<'a>)
+                }
+                _ => None,
+              })
+              .and_then(|body| {
+                Some(get_references_of(
+                  tree_file_uri,
+                  ReferenceType::VariableUse(variable_name.to_owned()),
+                  body,
+                ))
+              }),
+            TypeInferenceResult::Definable(_, Result::Ok(location)) => {
+              Some(get_references(tree_file_uri, to_position(location.0), tree))
             }
-          }
-          TypeInferenceResult::Definable(_, Result::Ok(location)) => {
-            Some(get_references(tree_file_uri, to_position(location.0), body))
-          }
-          _ => None,
-        })
-        .unwrap_or(vec![]),
-      Expr::FunctionCall(fc, _) => node
-        .inferred_type(&traversing_path)
-        .and_then(|inf| match inf {
-          TypeInferenceResult::Undefinable(_) => {
-            match GLOBAL_FUNCTIONS.iter().find(|el| el.0 == fc.value()) {
-              Some(hit) => traversing_path
-                .iter()
-                .rev()
-                .find_map(|body| match body {
-                  Base::ServiceBody(body) => Some(*body as &dyn HasChildren<'a>),
-                  _ => None,
-                })
-                .and_then(|body| {
-                  Some(get_references_of(
-                    tree_file_uri,
-                    ReferenceType::FunctionCall(hit.0.to_owned()),
-                    body,
-                  ))
-                }),
-              _ => None,
+            _ => None,
+          })
+          .unwrap_or(vec![])
+      }
+      Expr::FunctionCall(fc, _) => {
+        let func_name = fc.value();
+
+        node
+          .inferred_type(&traversing_path)
+          .and_then(|inf| match inf {
+            TypeInferenceResult::HiddenDefinition(_) => traversing_path
+              .iter()
+              .rev()
+              .find_map(|body| match body {
+                Base::ServiceBody(body)
+                  if body
+                    .service_global_functions()
+                    .iter()
+                    .find(|el| el.name().is_some_and(|name| name.value() == func_name))
+                    .is_some() =>
+                {
+                  Some(*body as &dyn HasChildren<'a>)
+                }
+                Base::RulesTree(rules)
+                  if rules
+                    .global_functions()
+                    .iter()
+                    .find(|el| el.name().is_some_and(|name| name.value() == func_name))
+                    .is_some() =>
+                {
+                  Some(*rules as &dyn HasChildren<'a>)
+                }
+                _ => None,
+              })
+              .and_then(|body| {
+                Some(get_references_of(
+                  tree_file_uri,
+                  ReferenceType::FunctionCall(func_name.to_owned()),
+                  body,
+                ))
+              }),
+            TypeInferenceResult::Definable(_, Result::Ok(location)) => {
+              Some(get_references(tree_file_uri, to_position(location.0), tree))
             }
-          }
-          TypeInferenceResult::Definable(_, Result::Ok(location)) => {
-            Some(get_references(tree_file_uri, to_position(location.0), body))
-          }
-          _ => None,
-        })
-        .unwrap_or(vec![]),
+            _ => None,
+          })
+          .unwrap_or(vec![])
+      }
       _ => vec![],
     },
     Base::MatchPathPart(path_part) => {
@@ -467,11 +505,37 @@ fn get_scoped_functions<'a>(traversing_path: &Vec<Base<'a>>) -> Vec<(String, boo
           false,
         )
       })),
+      Base::ServiceBody(body) => {
+        scoped_funs.extend(body.functions().iter().map(|def| {
+          (
+            def.name().map_or("", |ident| ident.value()).to_owned(),
+            false,
+          )
+        }));
+        scoped_funs.extend(body.service_global_functions().iter().map(|def| {
+          (
+            def.name().map_or("", |ident| ident.value()).to_owned(),
+            true,
+          )
+        }));
+      }
+      Base::RulesTree(tree) => {
+        scoped_funs.extend(
+          tree
+            .global_functions()
+            .iter()
+            .map(|def| (def.name().unwrap().value().to_owned(), true)),
+        );
+        scoped_funs.extend(tree.functions().iter().map(|def| {
+          (
+            def.name().map_or("", |ident| ident.value()).to_owned(),
+            false,
+          )
+        }));
+      }
       _ => continue,
     }
   }
-
-  scoped_funs.extend(GLOBAL_FUNCTIONS.iter().map(|def| (def.0.to_owned(), true)));
 
   scoped_funs
 }
@@ -517,7 +581,11 @@ pub fn get_hover_result<'a>(traversing_path: &Vec<Base<'a>>) -> Option<MarkupCon
       TypeInferenceResult::Undefinable(inferenced_type) => {
         Some((inferenced_type.firebase_type(), inferenced_type.docstring()))
       }
-      _ => None,
+      TypeInferenceResult::HiddenDefinition(firebase_type_information) => Some((
+        firebase_type_information.firebase_type(),
+        firebase_type_information.docstring(),
+      )),
+      TypeInferenceResult::Definable(_, Err(_)) => None,
     });
 
   if hover_result.is_none() {

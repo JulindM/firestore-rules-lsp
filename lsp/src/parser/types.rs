@@ -1,5 +1,3 @@
-use std::sync::LazyLock;
-
 use strum::AsRefStr;
 
 use super::base::FirebaseTypeInformation;
@@ -1179,138 +1177,10 @@ pub enum VariableType {
   Module,
 }
 
-pub static GLOBAL_VARIABLES: LazyLock<[(&str, FirebaseTypeInformation, VariableType); 8]> =
-  LazyLock::new(|| {
-    [
-      (
-        "duration",
-        FirebaseTypeInformation::new_documented(
-          FirebaseType::DurationModule,
-          FirebaseType::DurationModule.docstring(),
-        ),
-        VariableType::Module,
-      ),
-      (
-        "hashing",
-        FirebaseTypeInformation::new_documented(
-          FirebaseType::HashingModule,
-          FirebaseType::HashingModule.docstring(),
-        ),
-        VariableType::Module,
-      ),
-      (
-        "latlng",
-        FirebaseTypeInformation::new_documented(
-          FirebaseType::LatLngModule,
-          FirebaseType::LatLngModule.docstring(),
-        ),
-        VariableType::Module,
-      ),
-      (
-        "math",
-        FirebaseTypeInformation::new_documented(
-          FirebaseType::MathModule,
-          FirebaseType::MathModule.docstring(),
-        ),
-        VariableType::Module,
-      ),
-      (
-        "timestamp",
-        FirebaseTypeInformation::new_documented(
-          FirebaseType::TimestampModule,
-          FirebaseType::TimestampModule.docstring(),
-        ),
-        VariableType::Module,
-      ),
-      (
-        "request",
-        FirebaseTypeInformation::new_documented(
-          FirebaseType::Request,
-          FirebaseType::Request.docstring(),
-        ),
-        VariableType::Variable,
-      ),
-      (
-        "resource",
-        FirebaseTypeInformation::new_documented(
-          FirebaseType::Resource,
-          FirebaseType::Resource.docstring(),
-        ),
-        VariableType::Variable,
-      ),
-      (
-        "database",
-        FirebaseTypeInformation::new_documented(
-          FirebaseType::String,
-          FirebaseType::String.docstring(),
-        ),
-        VariableType::Variable,
-      ),
-    ]
-  });
-
-pub static GLOBAL_FUNCTIONS: LazyLock<[(&str, FirebaseTypeInformation); 6]> = LazyLock::new(|| {
-  [
-    (
-      "get",
-      FirebaseTypeInformation::new_documented(
-        FirebaseType::Resource,
-        FirebaseType::Resource.docstring(),
-      ),
-    ),
-    (
-      "path",
-      FirebaseTypeInformation::new_documented(FirebaseType::Path, FirebaseType::Path.docstring()),
-    ),
-    (
-      "getAfter",
-      FirebaseTypeInformation::new_documented(
-        FirebaseType::Resource,
-        FirebaseType::Resource.docstring(),
-      ),
-    ),
-    (
-      "exists",
-      FirebaseTypeInformation::new_documented(
-        FirebaseType::Boolean,
-        FirebaseType::Boolean.docstring(),
-      ),
-    ),
-    (
-      "existsAfer",
-      FirebaseTypeInformation::new_documented(
-        FirebaseType::Boolean,
-        FirebaseType::Boolean.docstring(),
-      ),
-    ),
-    (
-      "debug",
-      FirebaseTypeInformation::new_documented(
-        FirebaseType::Boolean,
-        FirebaseType::Boolean.docstring(),
-      ),
-    ),
-  ]
-});
-
 pub static SPECIAL_KEYWORDS: [&str; 20] = [
   "allow", "if", "true", "false", "null", "in", "return", "function", "let", "var", "is", "read",
   "write", "get", "list", "create", "update", "delete", "service", "match",
 ];
-
-pub fn namespace_reserved_function<'b>(name: &str) -> Option<FirebaseTypeInformation> {
-  GLOBAL_FUNCTIONS
-    .iter()
-    .find(|(n, _)| *n == name)
-    .map(|(_, t)| t.clone())
-}
-
-pub fn namespace_reserved_variable<'b>(name: &str) -> Option<FirebaseTypeInformation> {
-  GLOBAL_VARIABLES
-    .iter()
-    .find(|(n, _, _)| *n == name)
-    .map(|(_, t, _)| t.clone())
-}
 
 pub fn infer_function_type<'a>(
   obj_type: FirebaseType,

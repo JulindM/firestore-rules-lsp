@@ -47,8 +47,13 @@ pub trait ToBase: Contains {
   fn to_base_model<'a>(&'a self) -> Base<'a>;
 }
 
+pub fn get_null_position() -> Point {
+  Point { row: 0, column: 0 }
+}
+
 #[derive(Clone, Display)]
 pub enum Base<'a> {
+  RulesTree(&'a RulesTree),
   Function(&'a Function),
   FunctionParameter(&'a FunctionParameter),
   FunctionBody(&'a FunctionBody),
@@ -83,6 +88,7 @@ impl<'a> Base<'a> {
       Base::MatchPathPart(mpp) => mpp.span(),
       Base::Method(m) => m.span(),
       Base::ServiceBody(body) => body.span(),
+      Base::RulesTree(tree) => tree.span(),
     }
   }
 
@@ -111,6 +117,7 @@ impl<'a> Contains for Base<'a> {
       Base::Literal(literal) => literal.contains(p),
       Base::MatchPathPart(match_path_part) => match_path_part.contains(p),
       Base::Method(method) => method.contains(p),
+      Base::RulesTree(tree) => tree.contains(p),
     }
   }
 }
@@ -132,6 +139,7 @@ impl<'a> Debug for Base<'a> {
       Self::Literal(_) => f.debug_tuple("Literal").finish(),
       Self::MatchPathPart(_) => f.debug_tuple("MatchPathPart").finish(),
       Self::Method(_) => f.debug_tuple("Method").finish(),
+      Self::RulesTree(_) => f.debug_tuple("RulesTree").finish(),
     }
   }
 }
@@ -203,16 +211,16 @@ type DefinitionLocation = Result<(Point, Point), String>;
 #[derive(Debug, Clone)]
 pub enum TypeInferenceResult {
   Definable(FirebaseTypeInformation, DefinitionLocation),
+  HiddenDefinition(FirebaseTypeInformation),
   Undefinable(FirebaseTypeInformation),
-  UndefinableWithHints(FirebaseTypeInformation, String),
 }
 
 impl TypeInferenceResult {
   pub fn type_information(&self) -> &FirebaseTypeInformation {
     match self {
       TypeInferenceResult::Definable(t, _) => t,
+      TypeInferenceResult::HiddenDefinition(t) => t,
       TypeInferenceResult::Undefinable(t) => t,
-      TypeInferenceResult::UndefinableWithHints(t, _) => t,
     }
   }
 }
@@ -227,19 +235,150 @@ pub enum ServiceType {
 pub struct RulesTree {
   service_type: Option<ServiceType>,
   body: Option<ServiceBody>,
+  functions: Vec<Function>,
+  start: Point,
+  end: Point,
+  global_variables: Vec<VariableDefinition>,
+  global_functions: Vec<Function>,
 }
 
 impl RulesTree {
-  pub fn new(service_type: Option<ServiceType>, body: Option<ServiceBody>) -> Self {
-    Self { service_type, body }
+  pub fn new(
+    service_type: Option<ServiceType>,
+    body: Option<ServiceBody>,
+    functions: Vec<Function>,
+    start: Point,
+    end: Point,
+  ) -> Self {
+    Self {
+      service_type,
+      body,
+      functions,
+      start,
+      end,
+      global_variables: Vec::from([
+        VariableDefinition::new_with_type(
+          "duration",
+          None,
+          get_null_position(),
+          get_null_position(),
+          TypeInferenceResult::HiddenDefinition(FirebaseTypeInformation::new_documented(
+            FirebaseType::DurationModule,
+            FirebaseType::DurationModule.docstring(),
+          )),
+        ),
+        VariableDefinition::new_with_type(
+          "hashing",
+          None,
+          get_null_position(),
+          get_null_position(),
+          TypeInferenceResult::HiddenDefinition(FirebaseTypeInformation::new_documented(
+            FirebaseType::HashingModule,
+            FirebaseType::HashingModule.docstring(),
+          )),
+        ),
+        VariableDefinition::new_with_type(
+          "latlng",
+          None,
+          get_null_position(),
+          get_null_position(),
+          TypeInferenceResult::HiddenDefinition(FirebaseTypeInformation::new_documented(
+            FirebaseType::LatLngModule,
+            FirebaseType::LatLngModule.docstring(),
+          )),
+        ),
+        VariableDefinition::new_with_type(
+          "math",
+          None,
+          get_null_position(),
+          get_null_position(),
+          TypeInferenceResult::HiddenDefinition(FirebaseTypeInformation::new_documented(
+            FirebaseType::MathModule,
+            FirebaseType::MathModule.docstring(),
+          )),
+        ),
+        VariableDefinition::new_with_type(
+          "timestamp",
+          None,
+          get_null_position(),
+          get_null_position(),
+          TypeInferenceResult::HiddenDefinition(FirebaseTypeInformation::new_documented(
+            FirebaseType::TimestampModule,
+            FirebaseType::TimestampModule.docstring(),
+          )),
+        ),
+      ]),
+      global_functions: Vec::from([
+        Function::new_with_type(
+          Some(Identifier::new(
+            "path",
+            get_null_position(),
+            get_null_position(),
+          )),
+          vec![],
+          None,
+          get_null_position(),
+          get_null_position(),
+          TypeInferenceResult::HiddenDefinition(FirebaseTypeInformation::new_documented(
+            FirebaseType::Path,
+            FirebaseType::Path.docstring(),
+          )),
+        ),
+        Function::new_with_type(
+          Some(Identifier::new(
+            "debug",
+            get_null_position(),
+            get_null_position(),
+          )),
+          vec![],
+          None,
+          get_null_position(),
+          get_null_position(),
+          TypeInferenceResult::HiddenDefinition(FirebaseTypeInformation::new_documented(
+            FirebaseType::Boolean,
+            FirebaseType::Boolean.docstring(),
+          )),
+        ),
+      ]),
+    }
   }
 
-  pub fn body(&self) -> Option<&ServiceBody> {
+  pub fn service_body(&self) -> Option<&ServiceBody> {
     self.body.as_ref()
+  }
+
+  pub fn functions(&self) -> &[Function] {
+    &self.functions
   }
 
   pub fn service_type(&self) -> Option<&ServiceType> {
     self.service_type.as_ref()
+  }
+
+  pub fn global_functions(&self) -> &[Function] {
+    &self.global_functions
+  }
+
+  pub fn global_variables(&self) -> &[VariableDefinition] {
+    &self.global_variables
+  }
+}
+
+bm_contains!(RulesTree);
+bm_span!(RulesTree);
+bm_to_base_model!(RulesTree);
+
+impl<'a> HasChildren<'a> for RulesTree {
+  fn children(&'a self) -> Vec<&'a dyn HasChildren<'a>> {
+    let mut res: Vec<&dyn HasChildren<'a>> = vec![];
+
+    if self.body.is_some() {
+      res.push(self.service_body().unwrap());
+    }
+
+    self.functions.iter().for_each(|f| res.push(f));
+
+    res
   }
 }
 
@@ -312,6 +451,27 @@ impl Function {
       start,
       end,
       return_type_cache: OnceCell::new(),
+    }
+  }
+
+  pub fn new_with_type<'a>(
+    name: Option<Identifier>,
+    parameters: Vec<FunctionParameter>,
+    body: Option<FunctionBody>,
+    start: Point,
+    end: Point,
+    return_type: TypeInferenceResult,
+  ) -> Self {
+    let return_type_cache = OnceCell::new();
+    return_type_cache.set(Some(return_type)).ok();
+
+    Self {
+      name: name.to_owned(),
+      parameters,
+      body,
+      start,
+      end,
+      return_type_cache,
     }
   }
 
@@ -465,6 +625,25 @@ impl VariableDefinition {
     }
   }
 
+  pub fn new_with_type<'a>(
+    name: &str,
+    definition: Option<ExprNode>,
+    start: Point,
+    end: Point,
+    variable_type: TypeInferenceResult,
+  ) -> Self {
+    let definition_type_cache = OnceCell::new();
+    definition_type_cache.set(Some(variable_type)).ok();
+
+    Self {
+      name: name.to_owned(),
+      definition,
+      start,
+      end,
+      definition_type_cache: definition_type_cache,
+    }
+  }
+
   pub fn name(&self) -> &str {
     &self.name
   }
@@ -531,11 +710,11 @@ pub struct Identifier {
 }
 
 impl Identifier {
-  pub fn new<'a>(name: &str, node: Node<'a>) -> Self {
+  pub fn new<'a>(name: &str, start: Point, end: Point) -> Self {
     Self {
       value: String::from(name),
-      start: node.start_position(),
-      end: node.end_position(),
+      start,
+      end,
     }
   }
 
@@ -755,6 +934,8 @@ pub struct ServiceBody {
   rules: Vec<Rule>,
   start: Point,
   end: Point,
+  service_global_variables: Vec<VariableDefinition>,
+  service_global_functions: Vec<Function>,
 }
 
 impl ServiceBody {
@@ -770,11 +951,103 @@ impl ServiceBody {
       rules,
       start: node.start_position(),
       end: node.end_position(),
+      service_global_variables: Vec::from([
+        VariableDefinition::new_with_type(
+          "request",
+          None,
+          get_null_position(),
+          get_null_position(),
+          TypeInferenceResult::HiddenDefinition(FirebaseTypeInformation::new_documented(
+            FirebaseType::Request,
+            FirebaseType::Request.docstring(),
+          )),
+        ),
+        VariableDefinition::new_with_type(
+          "resource",
+          None,
+          get_null_position(),
+          get_null_position(),
+          TypeInferenceResult::HiddenDefinition(FirebaseTypeInformation::new_documented(
+            FirebaseType::Resource,
+            FirebaseType::Resource.docstring(),
+          )),
+        ),
+      ]),
+      service_global_functions: Vec::from([
+        Function::new_with_type(
+          Some(Identifier::new(
+            "get",
+            get_null_position(),
+            get_null_position(),
+          )),
+          vec![],
+          None,
+          get_null_position(),
+          get_null_position(),
+          TypeInferenceResult::HiddenDefinition(FirebaseTypeInformation::new_documented(
+            FirebaseType::Resource,
+            FirebaseType::Resource.docstring(),
+          )),
+        ),
+        Function::new_with_type(
+          Some(Identifier::new(
+            "getAfter",
+            get_null_position(),
+            get_null_position(),
+          )),
+          vec![],
+          None,
+          get_null_position(),
+          get_null_position(),
+          TypeInferenceResult::HiddenDefinition(FirebaseTypeInformation::new_documented(
+            FirebaseType::Resource,
+            FirebaseType::Resource.docstring(),
+          )),
+        ),
+        Function::new_with_type(
+          Some(Identifier::new(
+            "exists",
+            get_null_position(),
+            get_null_position(),
+          )),
+          vec![],
+          None,
+          get_null_position(),
+          get_null_position(),
+          TypeInferenceResult::HiddenDefinition(FirebaseTypeInformation::new_documented(
+            FirebaseType::Boolean,
+            FirebaseType::Boolean.docstring(),
+          )),
+        ),
+        Function::new_with_type(
+          Some(Identifier::new(
+            "existsAfter",
+            get_null_position(),
+            get_null_position(),
+          )),
+          vec![],
+          None,
+          get_null_position(),
+          get_null_position(),
+          TypeInferenceResult::HiddenDefinition(FirebaseTypeInformation::new_documented(
+            FirebaseType::Boolean,
+            FirebaseType::Boolean.docstring(),
+          )),
+        ),
+      ]),
     }
   }
 
   pub fn functions(&self) -> &[Function] {
     &self.functions
+  }
+
+  pub fn service_global_functions(&self) -> &[Function] {
+    &self.service_global_functions
+  }
+
+  pub fn service_global_variables(&self) -> &[VariableDefinition] {
+    &self.service_global_variables
   }
 }
 
@@ -1042,9 +1315,8 @@ impl ExprNode {
         Some(Operation::Negation) => Some(TypeInferenceResult::Undefinable(
           FirebaseTypeInformation::new_undocumented(FirebaseType::Boolean),
         )),
-        _ => Some(TypeInferenceResult::UndefinableWithHints(
+        _ => Some(TypeInferenceResult::Undefinable(
           FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
-          "Only negation is a valid unary operation".to_owned(),
         )),
       },
       Expr::Binary(op, _, _) => match op {
@@ -1052,10 +1324,8 @@ impl ExprNode {
         Some(Operation::And)
         | Some(Operation::Or)
         | Some(Operation::Relation)
-        | Some(Operation::Contains) => Some(TypeInferenceResult::UndefinableWithHints(
+        | Some(Operation::Contains) => Some(TypeInferenceResult::Undefinable(
           FirebaseTypeInformation::new_undocumented(FirebaseType::Boolean),
-          //TODO Hints when bad binary operators re used
-          "".to_owned(),
         )),
         Some(Operation::Addition)
         | Some(Operation::Multiplication)
@@ -1082,9 +1352,8 @@ impl ExprNode {
           }
         }
 
-        Some(TypeInferenceResult::UndefinableWithHints(
+        Some(TypeInferenceResult::Undefinable(
           FirebaseTypeInformation::new_undocumented(FirebaseType::Any),
-          "Ternary branches have different types".to_owned(),
         ))
       }
       Expr::Indexing(indexable, _) => {
@@ -1260,12 +1529,26 @@ fn find_variable_type<'a>(
     ));
   }
 
-  let namespace_reserved = namespace_reserved_variable(ident.value());
+  let variable_in_service_or_tree = traversing_path.iter().rev().find_map(|el| match el {
+    Base::ServiceBody(service_body) => service_body
+      .service_global_variables()
+      .iter()
+      .find(|v| v.name() == ident.value()),
+    Base::RulesTree(rules_tree) => rules_tree
+      .global_variables()
+      .iter()
+      .find(|v| v.name() == ident.value()),
+    _ => None,
+  });
 
-  if namespace_reserved.is_some() {
-    return Some(TypeInferenceResult::Undefinable(
-      namespace_reserved.unwrap(),
-    ));
+  if variable_in_service_or_tree.is_some() {
+    return Some(
+      variable_in_service_or_tree
+        .unwrap()
+        .variable_type(traversing_path)
+        .unwrap()
+        .clone(),
+    );
   }
 
   Some(TypeInferenceResult::Definable(
@@ -1328,6 +1611,18 @@ fn find_function_type<'a>(
 
         None
       }
+      Base::RulesTree(rules_tree) => {
+        let tree_fun_hit = rules_tree
+          .functions()
+          .iter()
+          .find(|f| f.name().map_or("", |fname| fname.value()) == ident.value());
+
+        if tree_fun_hit.is_some() {
+          return Some((i, tree_fun_hit.unwrap()));
+        }
+
+        None
+      }
       _ => None,
     });
 
@@ -1347,12 +1642,26 @@ fn find_function_type<'a>(
     ));
   }
 
-  let namespace_reserved = namespace_reserved_function(ident.value());
+  let function_in_global_or_service_body = traversing_path.iter().rev().find_map(|el| match el {
+    Base::ServiceBody(service_body) => service_body
+      .service_global_functions()
+      .iter()
+      .find(|func| func.name().map(|n| n.value()).unwrap_or("") == ident.value()),
+    Base::RulesTree(rules_tree) => rules_tree
+      .global_functions()
+      .iter()
+      .find(|func| func.name().map(|n| n.value()).unwrap_or("") == ident.value()),
+    _ => None,
+  });
 
-  if namespace_reserved.is_some() {
-    return Some(TypeInferenceResult::Undefinable(
-      namespace_reserved.unwrap(),
-    ));
+  if function_in_global_or_service_body.is_some() {
+    return Some(
+      function_in_global_or_service_body
+        .unwrap()
+        .return_type(traversing_path)
+        .unwrap()
+        .clone(),
+    );
   }
 
   Some(TypeInferenceResult::Definable(
