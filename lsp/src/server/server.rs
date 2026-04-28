@@ -14,8 +14,8 @@ use crate::{
   },
   provider::{
     analysis::{
-      get_hover_result, get_path_traversal, get_possible_completions, get_references, to_position,
-      try_see_if_typable,
+      generate_document_symbols, get_hover_result, get_path_traversal, get_possible_completions,
+      get_references, to_position, try_see_if_typable,
     },
     diagnoser::build_diagnostics,
     tokenizer::{get_used_semantic_token_modifiers, get_used_semantic_token_types, tokenize},
@@ -111,6 +111,11 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
           handle_references_request(reference_r, &evaulated_trees, req, &connection);
           continue;
         }
+
+        if let Ok(symbols_r) = cast_req::<DocumentSymbolRequest>(&req) {
+          handle_document_symbols_request(symbols_r, &evaulated_trees, req, &connection);
+          continue;
+        }
       }
       Message::Response(_) => continue,
       Message::Notification(not) => {
@@ -130,6 +135,29 @@ fn main_loop<'a>(connection: Connection, parser: &mut Parser) -> Result<(), Box<
   }
 
   Ok(())
+}
+
+fn handle_document_symbols_request<'a>(
+  symbols_r: (RequestId, DocumentSymbolParams),
+  evaulated_trees: &'a HashMap<String, (RulesTree, Tree)>,
+  req: Request,
+  connection: &Connection,
+) {
+  let text_document = symbols_r.1.text_document;
+
+  let tree = match try_get_tree(evaulated_trees, &text_document) {
+    Some(value) => value,
+    None => {
+      Message::Response(Response::new_ok(req.id.clone(), "No body found"));
+      return;
+    }
+  };
+
+  let symbols = generate_document_symbols(tree);
+
+  let _ = connection.sender.try_send(Message::Response(
+    Response::new_ok::<DocumentSymbolResponse>(req.id, DocumentSymbolResponse::Nested(symbols)),
+  ));
 }
 
 fn handle_references_request<'a>(

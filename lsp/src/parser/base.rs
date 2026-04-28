@@ -3,6 +3,7 @@ use std::{
   fmt::{Debug, Display},
 };
 
+use lsp_types::{Position, Range};
 use strum::{AsRefStr, Display};
 use tree_sitter::{Node, Point};
 
@@ -13,6 +14,21 @@ macro_rules! bm_span(
     impl<$($life),*> Spanned for $clazz<$($life),*> {
       fn span(&self) -> (Point, Point) {
         (self.start, self.end)
+      }
+    }
+
+    impl<$($life),*> Into<Range> for &$clazz<$($life),*> {
+      fn into(self) -> Range {
+        Range {
+          start: Position {
+            line: self.start.row as u32,
+            character: self.start.column as u32,
+          },
+          end: Position {
+            line: self.end.row as u32,
+            character: self.end.column as u32,
+          },
+        }
       }
     }
 ));
@@ -909,6 +925,14 @@ impl MatchBody {
   pub fn functions(&self) -> &[Function] {
     &self.functions
   }
+
+  pub fn matches(&self) -> &[Match] {
+    &self.matches
+  }
+
+  pub fn rules(&self) -> &[Rule] {
+    &self.rules
+  }
 }
 
 bm_contains!(MatchBody);
@@ -1049,6 +1073,14 @@ impl ServiceBody {
   pub fn service_global_variables(&self) -> &[VariableDefinition] {
     &self.service_global_variables
   }
+
+  pub fn matches(&self) -> &[Match] {
+    &self.matches
+  }
+
+  pub fn rules(&self) -> &[Rule] {
+    &self.rules
+  }
 }
 
 bm_contains!(ServiceBody);
@@ -1081,6 +1113,10 @@ impl Method {
       start: node.start_position(),
       end: node.end_position(),
     }
+  }
+
+  pub fn method_type(&self) -> &MethodType {
+    &self.method_type
   }
 }
 

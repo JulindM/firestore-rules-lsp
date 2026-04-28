@@ -1,6 +1,6 @@
 use lsp_types::{
-  CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Documentation, Location,
-  MarkupContent, MarkupKind, Position, Range, Uri,
+  CompletionItem, CompletionItemKind, CompletionItemLabelDetails, DocumentSymbol, Documentation,
+  Location, MarkupContent, MarkupKind, Position, Range, Uri,
 };
 
 use tree_sitter::Point;
@@ -250,6 +250,12 @@ fn get_scoped_variables<'a>(traversing_path: &Vec<Base<'a>>) -> Vec<(String, boo
   }
 
   scoped_vars
+}
+
+pub fn generate_document_symbols<'a>(tree: &'a RulesTree) -> Vec<DocumentSymbol> {
+  let mut result = Vec::new();
+  result.push(tree.into());
+  result
 }
 
 pub enum ReferenceType {
@@ -593,8 +599,6 @@ pub fn get_hover_result<'a>(traversing_path: &Vec<Base<'a>>) -> Option<MarkupCon
   }
 
   let (fir_type, docstr) = hover_result.unwrap();
-
-  eprintln!("{}", docstr.unwrap_or("No docstring"));
 
   Some(MarkupContent {
     kind: MarkupKind::Markdown,

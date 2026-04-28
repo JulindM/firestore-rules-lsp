@@ -30,8 +30,11 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "SYMBOL",
-              "name": "function_def"
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "function_def"
+              }
             },
             {
               "type": "BLANK"

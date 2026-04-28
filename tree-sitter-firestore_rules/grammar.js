@@ -10,7 +10,7 @@ module.exports = grammar({
     source_file: ($) =>
       seq(
         optional(seq($.rules_version_def, ";")),
-        optional($.function_def),
+        optional(repeat($.function_def)),
         optional(seq("service", $.service_type, $.service_body)),
       ),
 
