@@ -568,6 +568,10 @@
               {
                 "type": "SYMBOL",
                 "name": "map"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "indexing"
               }
             ]
           },

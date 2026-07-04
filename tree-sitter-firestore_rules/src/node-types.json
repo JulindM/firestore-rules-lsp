@@ -308,6 +308,10 @@
           "named": true
         },
         {
+          "type": "indexing",
+          "named": true
+        },
+        {
           "type": "list",
           "named": true
         },

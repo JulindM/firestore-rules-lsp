@@ -105,7 +105,14 @@ module.exports = grammar({
       prec.left(
         10,
         seq(
-          choice($.variable, $.expr_group, $.function_call, $.list, $.map),
+          choice(
+            $.variable,
+            $.expr_group,
+            $.function_call,
+            $.list,
+            $.map,
+            $.indexing,
+          ),
           "[",
           choice($.expr, $.range),
           "]",
