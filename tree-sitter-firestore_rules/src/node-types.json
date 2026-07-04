@@ -626,6 +626,10 @@
       "required": true,
       "types": [
         {
+          "type": "indexing",
+          "named": true
+        },
+        {
           "type": "member",
           "named": true
         },

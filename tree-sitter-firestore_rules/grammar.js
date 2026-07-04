@@ -130,12 +130,12 @@ module.exports = grammar({
         ),
       ),
 
-    member_object: ($) => choice($.primary, $.member),
+    member: ($) => prec.left(9, seq($.member_object, $.member_field)),
+
+    member_object: ($) => choice($.indexing, $.primary, $.member),
 
     member_field: ($) =>
       seq(".", choice($.variable, $.function_call, $.field_indexing)),
-
-    member: ($) => prec.left(9, seq($.member_object, $.member_field)),
 
     unary: ($) =>
       prec.right(

@@ -647,9 +647,30 @@
         ]
       }
     },
+    "member": {
+      "type": "PREC_LEFT",
+      "value": 9,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "member_object"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "member_field"
+          }
+        ]
+      }
+    },
     "member_object": {
       "type": "CHOICE",
       "members": [
+        {
+          "type": "SYMBOL",
+          "name": "indexing"
+        },
         {
           "type": "SYMBOL",
           "name": "primary"
@@ -685,23 +706,6 @@
           ]
         }
       ]
-    },
-    "member": {
-      "type": "PREC_LEFT",
-      "value": 9,
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "SYMBOL",
-            "name": "member_object"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "member_field"
-          }
-        ]
-      }
     },
     "unary": {
       "type": "PREC_RIGHT",
