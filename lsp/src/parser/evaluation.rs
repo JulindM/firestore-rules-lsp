@@ -428,10 +428,12 @@ fn parse_indexing<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNode> {
 
   let object = match object_node.kind() {
     "variable" => parse_variable(*object_node, source_bytes),
-    "function_call" => parse_function_call(*object_node, source_bytes),
     "expr_group" => parse_expr_group(*object_node, source_bytes),
+    "function_call" => parse_function_call(*object_node, source_bytes),
     "list" => parse_list(*object_node, source_bytes),
     "map" => parse_map(*object_node, source_bytes),
+    "indexing" => parse_indexing(*object_node, source_bytes),
+    "member" => parse_member(*object_node, source_bytes),
     _ => None,
   };
 
@@ -538,6 +540,7 @@ fn parse_member_object<'b>(node: Node<'b>, source_bytes: &[u8]) -> Option<ExprNo
   let object_node = children.first().unwrap();
 
   let object = match object_node.kind() {
+    "indexing" => parse_indexing(*object_node, source_bytes),
     "primary" => parse_primary(*object_node, source_bytes),
     "member" => parse_member(*object_node, source_bytes),
     _ => None,

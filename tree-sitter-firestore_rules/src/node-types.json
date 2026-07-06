@@ -320,6 +320,10 @@
           "named": true
         },
         {
+          "type": "member",
+          "named": true
+        },
+        {
           "type": "range",
           "named": true
         },

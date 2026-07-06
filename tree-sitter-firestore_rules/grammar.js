@@ -112,6 +112,7 @@ module.exports = grammar({
             $.list,
             $.map,
             $.indexing,
+            $.member,
           ),
           "[",
           choice($.expr, $.range),
@@ -132,7 +133,7 @@ module.exports = grammar({
 
     member: ($) => prec.left(9, seq($.member_object, $.member_field)),
 
-    member_object: ($) => choice($.indexing, $.primary, $.member),
+    member_object: ($) => choice($.primary, $.indexing, $.member),
 
     member_field: ($) =>
       seq(".", choice($.variable, $.function_call, $.field_indexing)),

@@ -572,6 +572,10 @@
               {
                 "type": "SYMBOL",
                 "name": "indexing"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "member"
               }
             ]
           },
@@ -669,11 +673,11 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "indexing"
+          "name": "primary"
         },
         {
           "type": "SYMBOL",
-          "name": "primary"
+          "name": "indexing"
         },
         {
           "type": "SYMBOL",
